@@ -687,12 +687,10 @@ M.funs = function(bufnr, capture_all, move_down)
 
     for id, node in r_fun_query:iter_captures(root_node, bufnr, 0, -1) do
         local name = r_fun_query.captures[id]
-
         -- Kinda hacky, but it works. Check if the parent of the function is
         -- the root node, if so, it's a top level function
         local s, _, _, _ = node:parent():range()
-
-        if name == "rfun" and s == 0 then
+        if name == "rfun" and not node:parent():parent() then
             local start_row, _, end_row, _ = node:range()
 
             if

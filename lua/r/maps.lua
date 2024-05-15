@@ -216,7 +216,7 @@ local send = function(file_type)
 
     -- Function
     create_maps("nvi", "RSendAllFun",    "fa", "<Cmd>lua require('r.send').funs(0, true, false)")
-    create_maps("nvi", "RSendCurrentFun",   "fc", "<Cmd>lua require('r.send').funs(0, false, false)")
+    create_maps("nvi", "RSendCurrentFun",   "ff", "<Cmd>lua require('r.send').funs(0, false, false)")
     create_maps("nvi", "RDSendCurrentFun",   "fd", "<Cmd>lua require('r.send').funs(0, false, true)")
 
     -- Pipe chain breaker

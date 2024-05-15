@@ -150,7 +150,7 @@ M.finish_inserting = function(type, txt)
     if type == "comment" then
         lines = {}
         for _, v in pairs(lns) do
-            table.insert(lines, "# " .. v)
+            table.insert(lines, "#> " .. v)
         end
     else
         lines = lns

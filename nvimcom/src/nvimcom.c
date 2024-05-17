@@ -814,6 +814,7 @@ static void send_libnames(void) {
  * differs from the previous count, add new libraries to LibInfo structure.
  */
 static void nvimcom_checklibs(void) {
+    return; /* manual manage lib */
     SEXP a;
 
     PROTECT(a = eval(lang1(install("search")), R_GlobalEnv));

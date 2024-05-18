@@ -814,7 +814,6 @@ static void send_libnames(void) {
  * differs from the previous count, add new libraries to LibInfo structure.
  */
 static void nvimcom_checklibs(void) {
-    return; /* manual manage lib */
     SEXP a;
 
     PROTECT(a = eval(lang1(install("search")), R_GlobalEnv));
@@ -898,7 +897,7 @@ static Rboolean nvimcom_task(__attribute__((unused)) SEXP expr,
     r_is_busy = 0;
 #endif
     if (rns_port[0] != 0) {
-        nvimcom_checklibs();
+        // nvimcom_checklibs();
         if (autoglbenv)
             nvimcom_globalenv_list();
     }

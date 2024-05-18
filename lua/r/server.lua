@@ -463,4 +463,6 @@ M.echo_rns_info = function(info)
     end)
 end
 
+M.start_rns = start_rnvimserver
+
 return M

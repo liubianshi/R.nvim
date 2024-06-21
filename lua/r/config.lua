@@ -25,6 +25,11 @@ local config = {
     clear_line          = false,
     close_term          = true,
     compldir            = "",
+    compl_data          = {
+        max_depth = 3,
+        max_size = 1000000,
+        max_time = 100,
+    },
     config_tmux         = true,
     csv_app             = "",
     disable_cmds        = { "" },
@@ -61,7 +66,7 @@ local config = {
     open_pdf            = "open and focus",
     paragraph_begin     = true,
     parenblock          = true,
-    pdfviewer           = "undefined",
+    pdfviewer           = "",
     quarto_preview_args = "",
     quarto_render_args  = "",
     rconsole_height     = 15,
@@ -806,6 +811,7 @@ local global_setup = function()
         table.insert(config_keys, tostring(k))
     end
 
+    set_pdf_viewer()
     apply_user_opts()
 
     -- Config values that depend on either system features or other config
@@ -829,7 +835,6 @@ local global_setup = function()
     else
         unix_config()
     end
-    set_pdf_viewer()
 
     -- Override default config values with user options for the second time.
     for k, v in pairs(user_opts) do

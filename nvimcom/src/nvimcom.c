@@ -1302,7 +1302,7 @@ void nvimcom_Start(int *vrb, int *anm, int *swd, int *age, int *imd, int *szl,
 #ifdef WIN32
         r_is_busy = 0;
 #endif
-        nvimcom_checklibs();
+        // nvimcom_checklibs();
     }
 }
 

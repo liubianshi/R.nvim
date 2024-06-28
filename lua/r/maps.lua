@@ -5,6 +5,7 @@ local warn = require("r").warn
 
 local map_desc = {
     RCustomStart        = { m = "", k = "", c = "Start",    d = "Ask user to enter parameters to start R" },
+    RPackages           = { m = "", k = "", c = "Start",    d = "Install missing package" },
     RSaveClose          = { m = "", k = "", c = "Start",    d = "Quit R, saving the workspace" },
     RClose              = { m = "", k = "", c = "Start",    d = "Send to R: quit(save = 'no')" },
     RStart              = { m = "", k = "", c = "Start",    d = "Start R with default configuration or reopen terminal window" },
@@ -18,7 +19,8 @@ local map_desc = {
     RViewDFa            = { m = "", k = "", c = "Edit",     d = "View the head of a data.frame or matrix under cursor in a split window" },
     RShowEx             = { m = "", k = "", c = "Edit",     d = "Extract the Examples section and paste it in a split window" },
     RSeparatePathPaste  = { m = "", k = "", c = "Edit",     d = "Split the path of the file under the cursor and paste it using the paste() prefix function" },
-    RFormatNum          = { m = "", k = "", c = "Edit",     d = "Add an 'L' suffix after numbers to explicitly indicate them as integers." },
+    RFormatNumbers      = { m = "", k = "", c = "Edit",     d = "Add an 'L' suffix after numbers to explicitly indicate them as integers." },
+    RFormatSubsetting   = { m = "", k = "", c = "Edit",     d = "Replace all the `$` subsetting operators with `[[` in the current buffer." },
     RSeparatePathHere   = { m = "", k = "", c = "Edit",     d = "Split the path of the file under the cursor and open it using the here() prefix function" },
     RNextRChunk         = { m = "", k = "", c = "Navigate", d = "Go to the next chunk of R code" },
     RGoToTeX            = { m = "", k = "", c = "Navigate", d = "Go the corresponding line in the generated LaTeX document" },
@@ -142,6 +144,8 @@ local control = function(file_type)
     create_maps("v",   "RViewDF",           "rv", "<Cmd>lua require('r.run').action('viewobj', 'v')")
     create_maps("v",   "RDputObj",          "td", "<Cmd>lua require('r.run').action('dputtab', 'v')")
 
+    create_maps("ni", "RPackages",          "ip", "<Cmd>lua require('r.packages').install_missing_packages()")
+
     if type(config.csv_app) == "function" or config.csv_app == "" then
         create_maps("ni",  "RViewDFs",          "vs", "<Cmd>lua require('r.run').action('viewobj', 'n', ', howto=\"split\"')")
         create_maps("ni",  "RViewDFv",          "vv", "<Cmd>lua require('r.run').action('viewobj', 'n', ', howto=\"vsplit\"')")
@@ -216,7 +220,8 @@ local edit = function()
     create_maps("nvi", "RSeparatePathHere",    "sh", "<Cmd>lua require('r.path').separate('here')")
 
     -- Format functions
-    create_maps("nvi", "RFormatNum",    "cn", "<Cmd>lua require('r.format').formatnum()")
+    create_maps("nvi", "RFormatNumbers",    "cn", "<Cmd>lua require('r.format.numbers').formatnum()")
+    create_maps("nvi", "RFormatSubsetting",    "cs", "<Cmd>lua require('r.format.brackets').formatsubsetting()")
 end
 
 local send = function(file_type)

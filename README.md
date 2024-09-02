@@ -25,6 +25,7 @@ Minimal configuration:
     config = function ()
       require("nvim-treesitter.configs").setup({
         ensure_installed = { "markdown", "markdown_inline", "r", "rnoweb", "yaml" },
+        highlight = { enable = true },
       })
     end
   },
@@ -44,10 +45,14 @@ More complex configuration (for `R.nvim` only):
     {
         "R-nvim/R.nvim",
         config = function ()
-            vim.api.nvim_buf_set_keymap(0, "n", "<Enter>", "<Plug>RDSendLine", {})
-            vim.api.nvim_buf_set_keymap(0, "v", "<Enter>", "<Plug>RSendSelection", {})
             -- Create a table with the options to be passed to setup()
             local opts = {
+                hook = {
+                    on_filetype = function()
+                        vim.api.nvim_buf_set_keymap(0, "n", "<Enter>", "<Plug>RDSendLine", {})
+                        vim.api.nvim_buf_set_keymap(0, "v", "<Enter>", "<Plug>RSendSelection", {})
+                    end
+                }
                 R_args = {"--quiet", "--no-save"},
                 min_editor_width = 72,
                 rconsole_width = 78,
@@ -62,7 +67,7 @@ More complex configuration (for `R.nvim` only):
                 -- If using fish shell, you could put in your config.fish:
                 -- alias r "R_AUTO_START=true nvim"
                 if vim.env.R_AUTO_START == "true" then
-                    opts.auto_start = 1
+                    opts.auto_start = "on startup"
                     opts.objbr_auto_start = true
                 end
                 require("r").setup(opts)
@@ -130,6 +135,9 @@ default value is "no".
 The option `notmuxconf` was renamed as `config_tmux` to avoid the negation of
 the negation `notmuxconf=false` or the even more awkward confirmation of the
 negation `notmuxconf=true`. The default value of `config_tmux` is `true`.
+
+The `:RFormat` command no longer has the option to use the package `formatR`;
+now, the `styler` package is required.
 
 ### New features
 

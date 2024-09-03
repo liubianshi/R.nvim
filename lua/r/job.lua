@@ -192,6 +192,60 @@ M.stop_rns = function()
     end
 end
 
+M.add_libs_to_rns = function(nms, opts)
+  if not nms then return end
+  if type(nms) ~= 'table' then nms = { nms } end
+  opts = opts or { update = false }
+
+  local R_loaded_libs = vim.g.R_loaded_libs or vim.split(
+    require("r.config").get_config().start_libs or "base,stats,graphics,grDevices,utils,methods",
+    ","
+  )
+  for _, nm in ipairs(nms) do
+    if not vim.tbl_contains(R_loaded_libs, nm) then
+      table.insert(R_loaded_libs, nm)
+    end
+  end
+  if not R_loaded_libs then return end
+
+  local job_server = nil
+  for k, v in pairs(jobs) do
+    if M.is_running(k) and k == "Server" then
+      job_server = v
+      break
+    end
+  end
+  if not job_server then return end
+
+  local libs_path = vim.env.RNVIM_TMPDIR .. "/installed_libnames_" .. vim.env.RNVIM_ID .. ".lua"
+  if opts.update or not vim.uv.fs_stat(libs_path) then
+    local cmd = [[
+      installed_libs <- installed.packages()
+      cat(
+        "return {\n",
+        paste(gettextf("  ['%s'] = '%s',", installed_libs[, 'Package'], installed_libs[, 'Version']), collapse = "\n"),
+        '\n}',
+        sep = '',
+        file = file.path(Sys.getenv("RNVIM_TMPDIR"), paste0("/installed_libnames_", Sys.getenv("RNVIM_ID"), ".lua"))
+      )
+    ]]
+    vim.system(
+      {'Rscript', '--no-save', '--no-restore', '--no-init-file', '-e', cmd},
+      { text = true }
+    ):wait()
+  end
+  local installed_libs = dofile(libs_path)
+
+  local msg = "+L" .. table.concat(
+    vim.tbl_map(function(nm)
+      return string.format('%s\003%s\004', nm, installed_libs[nm] )
+    end, R_loaded_libs), ""
+  ) .. "\n"
+  vim.fn.chansend(job_server, msg)
+  vim.wait(20)
+  vim.g.R_loaded_libs = R_loaded_libs
+end
+
 -- Only called by R when finishing a session in a external terminal emulator.
 -- We do know when the terminal exits, but when the terminal is closed Tmux is
 -- only detached and R keeps running.

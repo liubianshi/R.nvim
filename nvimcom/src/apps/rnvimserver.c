@@ -251,6 +251,18 @@ void stdin_loop(void) {
             stop_server();
             exit(0);
             break;
+        case '+': // Update libs
+          msg++;
+          switch(*msg) {
+          case 'L':
+            msg++;
+            update_pkg_list(msg);
+            build_objls();
+            if (auto_obbr)
+                lib2ob();
+            break;
+          }
+          break;
         default:
             fprintf(stderr, "Unknown command received: [%d] %s\n", line[0],
                     msg);

@@ -192,58 +192,80 @@ M.stop_rns = function()
     end
 end
 
-M.add_libs_to_rns = function(nms, opts)
+local function get_install_libs()
+  local cmd = [[
+    libs <- installed.packages()
+    cat(gettextf("%s\t%s", libs[, 'Package'], libs[, 'Version']), sep = '\n')
+  ]]
+  local obj = vim.system(
+    {'Rscript', '--no-save', '--no-restore', '--no-init-file', '-e', cmd},
+    { text = true, }
+  ):wait()
+
+  local installed_libs = {}
+  if not obj.stdout then return end
+  local stdout = vim.split(obj.stdout, "\n")
+  for _, info in ipairs(stdout) do
+    local name_version = vim.split(info, "\t")
+    if name_version then
+      installed_libs[name_version[1]] = name_version[2]
+    end
+  end
+
+  return installed_libs
+end
+
+local function update_loaded_libs(nms)
   if not nms then return end
   if type(nms) ~= 'table' then nms = { nms } end
-  opts = opts or { update = false }
+  local default_libs =
+    require("r.config").get_config().start_libs or
+    "base,stats,graphics,grDevices,utils,methods"
+  local R_loaded_libs = vim.g.R_loaded_libs or vim.split(default_libs, ",")
 
-  local R_loaded_libs = vim.g.R_loaded_libs or vim.split(
-    require("r.config").get_config().start_libs or "base,stats,graphics,grDevices,utils,methods",
-    ","
-  )
+  local has_new = false
   for _, nm in ipairs(nms) do
     if not vim.tbl_contains(R_loaded_libs, nm) then
+      has_new = true
       table.insert(R_loaded_libs, nm)
     end
   end
-  if not R_loaded_libs then return end
 
-  local job_server = nil
+  if has_new then
+    vim.g.R_loaded_libs = R_loaded_libs
+  end
+
+  return {
+    libs = R_loaded_libs,
+    has_new = has_new
+  }
+end
+
+local function get_server_job()
   for k, v in pairs(jobs) do
     if M.is_running(k) and k == "Server" then
-      job_server = v
-      break
+      return(v)
     end
   end
+  return nil
+end
+
+M.add_libs_to_rns = function(nms)
+  local libs = update_loaded_libs(nms)
+  if not libs or not libs.has_new then return end
+
+  local job_server = get_server_job()
   if not job_server then return end
 
-  local libs_path = vim.env.RNVIM_TMPDIR .. "/installed_libnames_" .. vim.env.RNVIM_ID .. ".lua"
-  if opts.update or not vim.uv.fs_stat(libs_path) then
-    local cmd = [[
-      installed_libs <- installed.packages()
-      cat(
-        "return {\n",
-        paste(gettextf("  ['%s'] = '%s',", installed_libs[, 'Package'], installed_libs[, 'Version']), collapse = "\n"),
-        '\n}',
-        sep = '',
-        file = file.path(Sys.getenv("RNVIM_TMPDIR"), paste0("/installed_libnames_", Sys.getenv("RNVIM_ID"), ".lua"))
-      )
-    ]]
-    vim.system(
-      {'Rscript', '--no-save', '--no-restore', '--no-init-file', '-e', cmd},
-      { text = true }
-    ):wait()
-  end
-  local installed_libs = dofile(libs_path)
+  local installed_libs = get_install_libs()
+  if not installed_libs then return end
 
-  local msg = "+L" .. table.concat(
-    vim.tbl_map(function(nm)
-      return string.format('%s\003%s\004', nm, installed_libs[nm] )
-    end, R_loaded_libs), ""
-  ) .. "\n"
+  local libs_body = vim.tbl_map(
+    function(n) return (n.. '\003' .. installed_libs[n] .. '\004') end,
+    libs.libs
+  )
+  local msg = "+L" .. table.concat(libs_body, "")  .. "\n"
   vim.fn.chansend(job_server, msg)
-  vim.wait(20)
-  vim.g.R_loaded_libs = R_loaded_libs
 end
 
 -- Only called by R when finishing a session in a external terminal emulator.

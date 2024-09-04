@@ -973,8 +973,8 @@ M.check_health = function()
 end
 
 M.get_option = function(key)
-  local value = (user_opts[key] or config[key])
-  return value
+    local value = (user_opts[key] or config[key])
+    return value
 end
 
 return M

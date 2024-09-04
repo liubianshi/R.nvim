@@ -26,7 +26,7 @@ end
 ---@param opts table | nil
 M.setup = function(opts)
     if opts then require("r.config").store_user_opts(opts) end
-    require('r.autocmds').update_compl_packages()
+    require("r.autocmds").update_compl_packages()
 end
 
 return M

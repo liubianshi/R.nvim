@@ -101,7 +101,7 @@ M.install_missing_packages = function(bufnr)
 end
 
 -- add lib to rnvimserver
-local function get_install_packages()
+local function get_installed_packages()
   local cmd = [[
     libs <- installed.packages()
     cat(gettextf("%s\t%s", libs[, 'Package'], libs[, 'Version']), sep = '\n')
@@ -115,10 +115,8 @@ local function get_install_packages()
   if not obj.stdout then return end
   local stdout = vim.split(obj.stdout, "\n")
   for _, info in ipairs(stdout) do
-    local name_version = vim.split(info, "\t")
-    if name_version then
-      installed_libs[name_version[1]] = name_version[2]
-    end
+    local nm, ver = unpack(vim.split(info, "\t"))
+    if nm then installed_libs[nm] = ver end
   end
 
   return installed_libs
@@ -150,11 +148,24 @@ local function packages_needed_update(nms)
   }
 end
 
+local build_package_objls = function(nms)
+  local Rcode = {
+    "p <- c('" .. table.concat(nms, "', '") .. "')",
+    "if (length(p) > 0) nvimcom:::nvim.build.cmplls(p)",
+  }
+
+  vim.system(
+      { "Rscript", "--quiet", "--no-save", "--no-restore", "--no-init-file",  "-e", table.concat(Rcode, "\n") },
+      {text = true}
+  ):wait()
+end
+
 M.update_compl_packages = function(nms)
   local libs = packages_needed_update(nms)
   if not libs or not libs.has_new then return end
+  build_package_objls(libs.libs)
 
-  local installed_libs = get_install_packages()
+  local installed_libs = get_installed_packages()
   if not installed_libs then return end
 
   local libs_body = vim.tbl_map(

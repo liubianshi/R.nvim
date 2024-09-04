@@ -495,7 +495,10 @@ local function pacakges_from_box_use(line)
   line = line:gsub("%b[]", "")
   line = line:gsub("%s", "")
   line = line:gsub("[^,=]+=", "")
-  local libs = vim.split(line, ",")
+  local libs = vim.tbl_filter(
+    function(lib) return not lib:match("/") end,
+    vim.split(line, ",")
+  )
   return libs
 end
 
@@ -506,27 +509,26 @@ M.extract_packages_from_buffer = function(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local patterns = {
-    s = vim.regex([[^\s*\(require\|library\|box::use\)\s*(]]),
-    e = vim.regex([[)\s*\(\s#.*\)\?$]])
+    ['start'] = vim.regex([[^\s*\(require\|library\|box::use\)\s*(]]),
+    ['end'] = vim.regex([[)\s*\(\s#.*\)\?$]])
   }
 
   local i, pre, start_matched, packages = 1, "", nil, {}
   while i <= #lines do
     local continue = nil
     local line = pre .. lines[i]
-    if start_matched or patterns.s:match_str(line) then
-      if not patterns.e:match_str(line) then
-        continue = true
-      else
+    if start_matched or patterns['start']:match_str(line) then
+      if patterns['end']:match_str(line) then
         local libs =
           pacakges_from_require_or_library(line) or
-          pacakges_from_box_use(line) or
-          {}
-        for _, l in ipairs(libs) do
+          pacakges_from_box_use(line)
+        for _, l in ipairs(libs or {}) do
           if not vim.tbl_contains(packages, l) then
             table.insert(packages, l)
           end
         end
+      else
+        continue = true
       end
     end
     pre = continue and line:gsub('%s#.*$', "") or ""

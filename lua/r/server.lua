@@ -279,21 +279,8 @@ end
 -- List R libraries from buffer
 local list_libs_from_buffer = function()
     local start_libs = config.start_libs or "base,stats,graphics,grDevices,utils,methods"
-    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, true)
     local lib
-    local flibs = {}
-    for _, v in pairs(lines) do
-        if v:find("^%s*library%s*%(") or v:find("^%s*require%s*%(") then
-            lib = string.gsub(v, "%s*", "")
-            lib = string.gsub(lib, "%s*,.*", "")
-            lib = string.gsub(lib, "%s*library%s*%(%s*", "")
-            lib = string.gsub(lib, "%s*require%s*%(%s*", "")
-            lib = string.gsub(lib, '"', "")
-            lib = string.gsub(lib, "'", "")
-            lib = string.gsub(lib, "%s*%).*", "")
-            table.insert(flibs, lib)
-        end
-    end
+    local flibs = utils.extract_packages_from_buffer()
     local libs = ""
     if #start_libs > 4 then libs = '"' .. start_libs:gsub(",", '", "') .. '"' end
     if #flibs > 0 then

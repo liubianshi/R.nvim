@@ -31,6 +31,7 @@ local config = {
         max_size = 1000000,
         max_time = 100,
     },
+    compl_method        = "normal",
     config_tmux         = true,
     csv_app             = "",
     disable_cmds        = { "" },
@@ -198,6 +199,7 @@ local apply_user_opts = function()
         setwd            = { "no", "file", "nvim" },
         pipe_version     = { "native", "magrittr" },
         path_split_fun   = { "here::here", "here", "file.path", "fs::path", "path" },
+        compl_method     = { "normal", "buffer" },
     }
     -- stylua: ignore end
 
@@ -968,6 +970,11 @@ M.check_health = function()
 
     htime = (uv.hrtime() - htime) / 1000000000
     require("r.edit").add_to_debug_info("check health (async)", htime, "Time")
+end
+
+M.get_option = function(key)
+  local value = (user_opts[key] or config[key])
+  return value
 end
 
 return M

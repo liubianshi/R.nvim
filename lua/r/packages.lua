@@ -100,4 +100,71 @@ M.install_missing_packages = function(bufnr)
     end)
 end
 
+-- add lib to rnvimserver
+local function get_install_packages()
+  local cmd = [[
+    libs <- installed.packages()
+    cat(gettextf("%s\t%s", libs[, 'Package'], libs[, 'Version']), sep = '\n')
+  ]]
+  local obj = vim.system(
+    {'Rscript', '--no-save', '--no-restore', '--no-init-file', '-e', cmd},
+    { text = true, }
+  ):wait()
+
+  local installed_libs = {}
+  if not obj.stdout then return end
+  local stdout = vim.split(obj.stdout, "\n")
+  for _, info in ipairs(stdout) do
+    local name_version = vim.split(info, "\t")
+    if name_version then
+      installed_libs[name_version[1]] = name_version[2]
+    end
+  end
+
+  return installed_libs
+end
+
+local function packages_needed_update(nms)
+  if not nms then return end
+  if type(nms) ~= 'table' then nms = { nms } end
+  local default_libs =
+    require("r.config").get_config().start_libs or
+    "base,stats,graphics,grDevices,utils,methods"
+  local R_loaded_libs = vim.g.R_loaded_libs or vim.split(default_libs, ",")
+
+  local has_new = false
+  for _, nm in ipairs(nms) do
+    if not vim.tbl_contains(R_loaded_libs, nm) then
+      has_new = true
+      table.insert(R_loaded_libs, nm)
+    end
+  end
+
+  if has_new then
+    vim.g.R_loaded_libs = R_loaded_libs
+  end
+
+  return {
+    libs = R_loaded_libs,
+    has_new = has_new
+  }
+end
+
+M.update_compl_packages = function(nms)
+  local libs = packages_needed_update(nms)
+  if not libs or not libs.has_new then return end
+
+  local installed_libs = get_install_packages()
+  if not installed_libs then return end
+
+  local libs_body = vim.tbl_map(
+    function(n)
+      return string.format("%s\003%s\004", n, installed_libs[n])
+    end,
+    libs.libs
+  )
+  local msg = "+L" .. table.concat(libs_body, "")  .. "\n"
+  require('r.job').stdin("Server", msg)
+end
+
 return M

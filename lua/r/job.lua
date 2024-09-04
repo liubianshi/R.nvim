@@ -261,7 +261,9 @@ M.add_libs_to_rns = function(nms)
   if not installed_libs then return end
 
   local libs_body = vim.tbl_map(
-    function(n) return (n.. '\003' .. installed_libs[n] .. '\004') end,
+    function(n)
+      return string.format("%s\003%s\004", n, installed_libs[n])
+    end,
     libs.libs
   )
   local msg = "+L" .. table.concat(libs_body, "")  .. "\n"

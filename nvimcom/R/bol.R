@@ -20,11 +20,22 @@ nvim.fix.string <- function(x, edq = FALSE) {
 #' @param objclass Class of first argument of the function.
 nvim.args <- function(funcname, txt = "", pkg = NULL, objclass) {
     # Adapted from: https://stat.ethz.ch/pipermail/ess-help/2011-March/006791.html
-    if (!exists(funcname))
+    env_name <- ""
+    env <- NULL
+    if (grepl("$", funcname, fixed = TRUE)) {
+        funcname <- strsplit(funcname, "$", fixed = TRUE)[[1]]
+        env_name <- paste0(funcname[-length(funcname)], collapse = "$") 
+        funcname <- funcname[length(funcname)]
+        try(env <- as.environment(eval(parse(text = env_name))), silent = TRUE)
+        if (is.null(env) || !existsFunction(funcname, where = env))
+            return("")
+    }
+
+    if (is.null(env) && !exists(funcname))
         return("")
     frm <- NA
     funcmeth <- NA
-    if (!missing(objclass) && nvim.grepl("[[:punct:]]", funcname) == FALSE) {
+    if (is.null(env) && !missing(objclass) && nvim.grepl("[[:punct:]]", funcname) == FALSE) {
         saved.warn <- getOption("warn")
         options(warn = -1)
         on.exit(options(warn = saved.warn))
@@ -40,27 +51,33 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass) {
             }
         }
     }
-
     if (is.null(pkg)) {
-        pkgname <- sub(".*:", "", find(funcname, mode = "function")[1])
+        pkgname <- if (env_name != "") {
+            env_name
+        } else {
+            sub(".*:", "", find(funcname, mode = "function")[1])
+        }
     } else {
         pkgname <- pkg
     }
-
     if (is.na(frm[1])) {
         if (is.null(pkg)) {
             deffun <- paste0(funcname, ".default")
             if (existsFunction(deffun) && pkgname != ".GlobalEnv") {
                 funcname <- deffun
                 funcmeth <- deffun
-            } else if (!existsFunction(funcname)) {
+            } else if (pkgname == ".GlobalEnv" && !existsFunction(funcname)) {
                 return("")
             }
-            if (is.primitive(get(funcname))) {
+            if (is.null(env) && is.primitive(get(funcname))) {
                 a <- args(funcname)
                 if (is.null(a))
                     return("")
                 frm <- formals(a)
+            } else if (!is.null(env)) {
+                try(frm <- formals(get(funcname, envir = env)), silent = TRUE)
+                if (length(frm) == 1 && is.na(frm))
+                    return("")
             } else {
                 try(frm <- formals(get(funcname, envir = globalenv())), silent = TRUE)
                 if (length(frm) == 1 && is.na(frm))
@@ -110,7 +127,7 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass) {
             res <- append(res, paste0(field, "\x04list()\x05"))
         } else {
             res <- append(res, paste0(field, "\x05"))
-            warning(paste0("nvim.args: ", funcname, " [", field, "]", " (typeof = ", type, ")"))
+            warning(paste0("nvim.args: ", paste(env_name, funcname, sep = "$"), " [", field, "]", " (typeof = ", type, ")"))
         }
     }
 

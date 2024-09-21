@@ -307,7 +307,7 @@ nvim.list.args <- function(ff) {
         }
         return(invisible(NULL))
     }
-    print(args(ff))
+    print(args(eval(parse(text = ff))))
 }
 
 #' Plot an object.
@@ -408,9 +408,17 @@ nvim.getmethod <- function(fname, objclass) {
 #' (example: `library::function`).
 #' @param ldf Whether the function is in `R_fun_data_1` or not.
 nvim_complete_args <- function(id, rkeyword, argkey, firstobj = "", lib = NULL, ldf = FALSE) {
-
     # Check if rkeyword is a .GlobalEnv function:
-    if(length(grep(paste0("^", rkeyword, "$"), objects(.GlobalEnv))) == 1) {
+    environment_function <- FALSE
+    try(
+      environment_function <-
+        grepl("$", rkeyword, fixed = TRUE) && is.function(eval(parse(text = rkeyword))),
+      silent = TRUE
+    )
+    if(
+      length(grep(paste0("^", rkeyword, "$"), objects(.GlobalEnv))) == 1
+      || environment_function
+    ) {
         args <- nvim.args(rkeyword, txt = argkey)
         args <- gsub("\005$", "", args)
         argsl <- strsplit(args, "\005")[[1]]
@@ -418,7 +426,7 @@ nvim_complete_args <- function(id, rkeyword, argkey, firstobj = "", lib = NULL, 
         args <- paste0("{label = '",
                        paste(argsl,
                              collapse = "', cls = 'a', env = '.GlobalEnv'}, {label = '"),
-                       "', cls = 'a', env = '.GlobalEnv'}")
+                       "', cls = 'a', env = '.GlobalEnv'},")
         msg <- paste0("+C", id, ";", argkey, ";", rkeyword, ";;", args)
         .C("nvimcom_msg_to_nvim", msg, PACKAGE = "nvimcom")
         return(invisible(NULL))

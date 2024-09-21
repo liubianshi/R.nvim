@@ -454,7 +454,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
     if (depth > curdepth)
         curdepth = depth;
 
-    int xgroup = 0; // 1 = function, 2 = data.frame, 3 = list, 4 = s4
+    int xgroup = 0; // 1 = function, 2 = data.frame, 3 = list, 4 = s4, 5 = enviroment
     char ebuf[64];
     int len = 0;
     SEXP txt, lablab;
@@ -567,6 +567,10 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
         UNPROTECT(2);
         snprintf(buf, 127, " [%d]", len);
         p = str_cat(p, buf);
+    } else if (xgroup == 5) {
+        len = Rf_length(R_lsInternal(*x, allnames));
+        snprintf(buf, 127, " [%d]", len);
+        p = str_cat(p, buf);
     }
 
     // finish the line
@@ -588,14 +592,19 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
                 }
             }
         } else if (xgroup == 5) {
-            SEXP listnames;
+            SEXP listnames, eexp;
             snprintf(newenv, 575, "%s%s$", curenv, xname);
             PROTECT(listnames = R_lsInternal(*x, allnames));
 
             len = Rf_length(listnames);
             for (int i = 0; i < len; i++) {
-              ename = CHAR(STRING_ELT(listnames, i));
-              UNPROTECT(1);
+              if (i == len - 1) {
+                ename = CHAR(STRING_ELT(listnames, i));
+              } else {
+                PROTECT(eexp = STRING_ELT(listnames, i));
+                ename = CHAR(eexp);
+                UNPROTECT(1);
+              }
               if (R_BindingIsActive(Rf_install(ename), *x)) {
                 // See: https://github.com/jalvesaq/Nvim-R/issues/686
                 PROTECT(elmt = R_ActiveBindingFunction(Rf_install(ename), *x));
@@ -614,6 +623,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
               }
               UNPROTECT(1);
             }
+            UNPROTECT(1);
         } else {
             SEXP listNames;
             snprintf(newenv, 575, "%s%s$", curenv, xname);

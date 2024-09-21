@@ -492,6 +492,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
         xgroup = 4;
     } else if (Rf_isEnvironment(*x)) {
         p = str_cat(p, "\006:\006");
+        xgroup = 5; // for support enviroment element but not run correct
     } else if (TYPEOF(*x) == PROMSXP) {
         p = str_cat(p, "\006&\006");
     } else {
@@ -585,6 +586,33 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
                     p = nvimcom_glbnv_line(&elmt, ename, newenv, p, depth + 1);
                     UNPROTECT(1);
                 }
+            }
+        } else if (xgroup == 5) {
+            SEXP listnames;
+            snprintf(newenv, 575, "%s%s$", curenv, xname);
+            PROTECT(listnames = R_lsInternal(*x, allnames));
+
+            len = Rf_length(listnames);
+            for (int i = 0; i < len; i++) {
+              ename = CHAR(STRING_ELT(listnames, i));
+              UNPROTECT(1);
+              if (R_BindingIsActive(Rf_install(ename), *x)) {
+                // See: https://github.com/jalvesaq/Nvim-R/issues/686
+                PROTECT(elmt = R_ActiveBindingFunction(Rf_install(ename), *x));
+              } else {
+                PROTECT(elmt = Rf_findVar(Rf_install(ename), *x));
+              }
+              // should never be unbound
+              if (elmt != R_UnboundValue) {
+                if (ename[0] == 0) {
+                    snprintf(ebuf, 63, "[[%d]]", i + 1);
+                    ename = ebuf;
+                }
+                p = nvimcom_glbnv_line(&elmt, ename, newenv, p, depth + 1);
+              } else {
+                REprintf("nvimcom_globalenv_list: Unexpected R_UnboundValue.\n");
+              }
+              UNPROTECT(1);
             }
         } else {
             SEXP listNames;

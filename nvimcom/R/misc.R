@@ -415,7 +415,7 @@ nvim_complete_args <- function(id, rkeyword, argkey, firstobj = "", lib = NULL, 
         grepl("$", rkeyword, fixed = TRUE) && is.function(eval(parse(text = rkeyword))),
       silent = TRUE
     )
-    if(
+    if (
       length(grep(paste0("^", rkeyword, "$"), objects(.GlobalEnv))) == 1
       || environment_function
     ) {

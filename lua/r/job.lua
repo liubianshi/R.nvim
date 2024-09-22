@@ -72,7 +72,8 @@ M.on_stdout = function(job_id, data, _)
                 end
             else
                 if waiting_more_input then
-                    incomplete_input.received = incomplete_input.received + cmd:len()
+                    -- without +1, incomplete_input.received will not equal incomplete_input.size
+                    incomplete_input.received = incomplete_input.received + cmd:len() + 1
                     if incomplete_input.received == incomplete_input.size then
                         waiting_more_input = false
                         cmd = incomplete_input.str .. cmd

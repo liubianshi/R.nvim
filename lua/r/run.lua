@@ -124,6 +124,12 @@ start_R2 = function()
         start_options,
         'options(nvimcom.source.path = "' .. config.source_read .. '")'
     )
+    if config.compl_method == "buffer" then
+      table.insert(
+          start_options,
+          '.C("set_compl_method", 1, PACKAGE = "nvimcom")'
+      )
+    end
 
     local rsd = M.get_R_start_dir()
     if rsd then

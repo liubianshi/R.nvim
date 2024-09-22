@@ -81,6 +81,9 @@ static char tmpdir[512]; // The environment variable RNVIM_TMPDIR.
 static int setwidth = 0; // Set the option width after each command is executed
 static int oldcolwd = 0; // Last set width.
 
+static int compl_method = 0;  // completion method, 0 = normal, 1 = buffer
+void set_compl_method(int m) { compl_method = m; }
+
 #ifdef WIN32
 static int r_is_busy = 1; // Is R executing a top level command? R memory will
 // become corrupted and R will crash afterwards if we execute a function that
@@ -918,7 +921,8 @@ void nvimcom_task(void) {
     r_is_busy = 0;
 #endif
     if (rns_port[0] != 0) {
-        // nvimcom_checklibs();
+        if (compl_method == 0)
+            nvimcom_checklibs();
         if (autoglbenv)
             nvimcom_globalenv_list();
     }
@@ -1325,7 +1329,8 @@ SEXP nvimcom_Start(SEXP vrb, SEXP anm, SEXP swd, SEXP age, SEXP imd, SEXP szl,
 #ifdef WIN32
         r_is_busy = 0;
 #endif
-        // nvimcom_checklibs();
+        if (compl_method == 0)
+            nvimcom_checklibs();
     }
 
     SEXP ans;

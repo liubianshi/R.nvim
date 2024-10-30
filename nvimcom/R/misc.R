@@ -87,7 +87,7 @@ nvim_viewobj <- function(oname, fenc = "", nrows = NULL, howto = "tabnew", R_df_
         }
         if (inherits(ok, "try-error")) {
             .C("nvimcom_msg_to_nvim",
-               paste0("lua require('r').warn('", '"', oname, '"', " not found in .GlobalEnv')"),
+               paste0("lua require('r.log').warn('", '"', oname, '"', " not found in .GlobalEnv')"),
                PACKAGE = "nvimcom")
             return(invisible(NULL))
         }
@@ -176,7 +176,7 @@ nvim_insert <- function(cmd, howto = "tabnew") {
     try(o <- capture.output(cmd))
     if (inherits(o, "try-error")) {
         .C("nvimcom_msg_to_nvim",
-           paste0("lua require('r').warn('Error trying to execute the command \"", cmd, "\"')"),
+           paste0("lua require('r.log').warn('Error trying to execute the command \"", cmd, "\"')"),
            PACKAGE = "nvimcom")
     } else {
         o <- gsub("\\\\", "\\\\\\\\", o)
@@ -463,5 +463,20 @@ nvim_complete_args <- function(id, rkeyword, argkey, firstobj = "", lib = NULL, 
         msg <- paste0("+C", id, ";", argkey, ";", lib, "::", rkeyword, ";;")
     }
     .C("nvimcom_msg_to_nvim", msg, PACKAGE = "nvimcom")
+    return(invisible(NULL))
+}
+
+update_params <- function(str) {
+    if (str == "") {
+        if (length(grep("^params$", ls(.GlobalEnv))) == 1) {
+            rm(params, envir = .GlobalEnv)
+        }
+        return(invisible(NULL))
+    }
+    str <- gsub("\x11", "\n", str)
+    if (!require(yaml, quietly = TRUE))
+        stop("Please, install the 'yaml' package.")
+    params <<- yaml::yaml.load(str)$params
+    .C("nvimcom_task", PACKAGE = "nvimcom")
     return(invisible(NULL))
 }

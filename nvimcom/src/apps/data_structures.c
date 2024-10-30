@@ -522,6 +522,7 @@ void update_glblenv_buffer(char *g) {
     }
 
     memcpy(glbnv_buffer, g, glbnv_size);
+    glbnv_buffer[glbnv_size] = 0;
 
     if (check_omils_buffer(glbnv_buffer, &glbnv_size) == NULL) {
         glbnv_buffer_sz = 0;

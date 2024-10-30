@@ -294,7 +294,7 @@ end
 local list_libs_from_buffer = function()
     local start_libs = config.start_libs or "base,stats,graphics,grDevices,utils,methods"
     local lib
-    local flibs = utils.extract_packages_from_buffer()
+    local flibs = require("r.utils").extract_packages_from_buffer()
     local libs = ""
     if #start_libs > 4 then libs = '"' .. start_libs:gsub(",", '", "') .. '"' end
     if #flibs > 0 then

@@ -53,13 +53,14 @@ A longer example adding some custom behaviour:
     version = "~0.1.0"
     config = function()
         -- Create a table with the options to be passed to setup()
+        ---@type RConfigUserOpts
         local opts = {
             hook = {
                 on_filetype = function()
                     vim.api.nvim_buf_set_keymap(0, "n", "<Enter>", "<Plug>RDSendLine", {})
                     vim.api.nvim_buf_set_keymap(0, "v", "<Enter>", "<Plug>RSendSelection", {})
                 end
-            }
+            },
             R_args = {"--quiet", "--no-save"},
             min_editor_width = 72,
             rconsole_width = 78,
@@ -128,7 +129,7 @@ be minimally configured like so:
     run = ":TSUpdate",
     config = function ()
         require("nvim-treesitter.configs").setup({
-            ensure_installed = { "markdown", "markdown_inline", "r", "rnoweb", "yaml" },
+            ensure_installed = { "markdown", "markdown_inline", "r", "rnoweb", "yaml", "csv" },
             highlight = { enable = true },
         })
     end
@@ -195,6 +196,11 @@ firm commitment to backwards compatibility.
 
 - `:RFormat` now requires {styler} to be installed; {formatR} is no longer
     supported.
+
+- `view_df` is a table replacing the options `csv_app`,
+  `csv_delim`, and `df_viewer`. The commands to see a `data.frame`
+  or `matrix` in a split window were eliminated. See the documentation
+  on `view_df` for alternative ways of getting similar results.
 
 ### New features
 

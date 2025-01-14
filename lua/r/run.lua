@@ -55,7 +55,7 @@ start_R2 = function()
 
     table.insert(
         start_options,
-        ' Sys.setenv(RNVIM_RSLV_CB = "' .. vim.env.RNVIM_RSLV_CB .. '")'
+        'Sys.setenv(RNVIM_RSLV_CB = "' .. vim.env.RNVIM_RSLV_CB .. '")'
     )
     table.insert(
         start_options,
@@ -69,6 +69,20 @@ start_R2 = function()
         start_options,
         "options(nvimcom.max_time = " .. tostring(config.compl_data.max_time) .. ")"
     )
+    table.insert(
+        start_options,
+        'options(nvimcom.set_params = "' .. config.set_params .. '")'
+    )
+    if
+        config.set_params ~= "no"
+        and (vim.o.filetype == "quarto" or vim.o.filetype == "rmd")
+        and require("r.rmd").params_status() == "new"
+    then
+        table.insert(
+            start_options,
+            'nvimcom:::update_params("' .. vim.api.nvim_buf_get_name(0) .. '")'
+        )
+    end
     if config.objbr_allnames then
         table.insert(start_options, "options(nvimcom.allnames = TRUE)")
     else
@@ -86,7 +100,7 @@ start_R2 = function()
     else
         table.insert(start_options, "options(nvimcom.autoglbenv = 0)")
     end
-    if config.setwidth and config.setwidth == 2 then
+    if config.setwidth == 2 then
         table.insert(start_options, "options(nvimcom.setwidth = TRUE)")
     else
         table.insert(start_options, "options(nvimcom.setwidth = FALSE)")
@@ -96,17 +110,10 @@ start_R2 = function()
     else
         table.insert(start_options, "options(nvimcom.nvimpager = TRUE)")
     end
-    if
-        type(config.external_term) == "boolean"
-        and not config.external_term
-        and config.esc_term
-    then
+    if config.external_term == "" and config.esc_term then
         table.insert(start_options, "options(editor = nvimcom:::nvim.edit)")
     end
-    if
-        (type(config.external_term) == "boolean" and config.external_term == true)
-        or type(config.external_term) == "string"
-    then
+    if config.external_term ~= "" then
         table.insert(
             start_options,
             "reg.finalizer(.GlobalEnv, nvimcom:::final_msg, onexit = TRUE)"
@@ -147,17 +154,19 @@ start_R2 = function()
         return
     end
 
-    if type(config.external_term) == "boolean" and config.external_term == false then
+    if config.external_term == "" then
         require("r.term").start_term()
         return
     end
 
     if config.applescript then
+        warn("Support for running R.app may be removed. Please, see https://github.com/R-nvim/R.nvim/issues/309")
         require("r.osx").start_Rapp()
         return
     end
 
     if config.is_windows then
+        warn("Support for running Rgui.exe may be removed. Please, see https://github.com/R-nvim/R.nvim/issues/308")
         require("r.windows").start_Rgui()
         return
     end
@@ -180,17 +189,11 @@ end
 M.start_R = function(whatr)
     -- R started and nvimcom loaded
     if vim.g.R_Nvim_status == 7 then
-        if type(config.external_term) == "boolean" and config.external_term == false then
-            require("r.term").reopen_win()
-        end
+        if config.external_term == "" then require("r.term").reopen_win() end
         return
     end
 
-    if
-        type(config.external_term) == "string"
-        and config.external_term:find("tmux split%-window")
-        and not vim.env.TMUX_PANE
-    then
+    if config.external_term:find("tmux split%-window") and not vim.env.TMUX_PANE then
         warn("Neovim must be running within Tmux to run `tmux split-window`.")
         return
     end
@@ -331,18 +334,13 @@ M.set_nvimcom_info = function(nvimcomversion, rpid, wid, r_info)
     vim.g.R_Nvim_status = 7
     hooks.run(config, "after_R_start")
     send.set_send_cmd_fun()
-    if vim.o.filetype == "quarto" or vim.o.filetype == "rmd" then
-        require("r.rmd").update_params()
-    end
 end
 
 M.clear_R_info = function()
     vim.fn.delete(config.tmpdir .. "/globenv_" .. vim.fn.string(vim.env.RNVIM_ID))
     vim.fn.delete(config.localtmpdir .. "/liblist_" .. vim.fn.string(vim.env.RNVIM_ID))
     R_pid = 0
-    if type(config.external_term) == "boolean" and config.external_term == false then
-        require("r.term").close_term()
-    end
+    if config.external_term == "" then require("r.term").close_term() end
     if job.is_running("Server") then
         vim.g.R_Nvim_status = 3
         job.stdin("Server", "43\n")
@@ -386,7 +384,7 @@ M.quit_R = function(how)
     end
 
     if config.is_windows then
-        if type(config.external_term) == "boolean" and config.external_term then
+        if config.external_term ~= "" then
             -- SaveWinPos
             job.stdin(
                 "Server",
@@ -704,11 +702,7 @@ end
 M.clear_console = function()
     if config.clear_console == false then return end
 
-    if
-        config.is_windows
-        and type(config.external_term) == "boolean"
-        and config.external_term
-    then
+    if config.is_windows and config.external_term ~= "" then
         job.stdin("Server", "86\n")
         vim.wait(50)
         job.stdin("Server", "87\n")

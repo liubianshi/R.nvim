@@ -129,7 +129,7 @@ be minimally configured like so:
     run = ":TSUpdate",
     config = function ()
         require("nvim-treesitter.configs").setup({
-            ensure_installed = { "markdown", "markdown_inline", "r", "rnoweb", "yaml", "csv" },
+            ensure_installed = { "markdown", "markdown_inline", "r", "rnoweb", "yaml", "latex", "csv" },
             highlight = { enable = true },
         })
     end
@@ -175,6 +175,11 @@ firm commitment to backwards compatibility.
     `max_lines_to_paste` can now be used to set the number of lines which can be
     sent directly to the R Console without saving the code in a temporary file.
 
+- Rnoweb chunk headers with options are not supported by tree-sitter. You have
+  to write the options at the top of the code block after the `#|` comment
+  strings as is common in Quarto documents. See
+  [execution-options](https://quarto.org/docs/computations/execution-options.html).
+
 ### Changes:
 
 - `<M-->` (i.e. `Alt + -`) is now used to insert `<-`. This can be configured
@@ -191,6 +196,8 @@ firm commitment to backwards compatibility.
     details.
 
 - `setwd` replaces `nvim_wd`. The new default value is `"no"`.
+
+- Only strings are valid values for `external_term` and `rmdchunk`.
 
 - `config_tmux` replaces `notmuxconf`. The new default value is `true`.
 

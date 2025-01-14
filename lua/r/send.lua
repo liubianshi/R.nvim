@@ -105,14 +105,17 @@ local function get_code_to_send(txt, row)
     if vim.o.filetype == "rhelp" then return get_rhelp_code_to_send(txt, row) end
 
     -- Find the 'root' node for the current expression --------------------
-    local n_lang = vim.o.filetype == "rnoweb" and "r" or nil
     local node = vim.treesitter.get_node({
         bufnr = 0,
         pos = { row - 1, col - 1 },
-        lang = n_lang,
         -- Required for quarto/rmd/rnoweb; harmless for r.
         ignore_injections = false,
     })
+
+    -- This is a strange fix for https://github.com/R-nvim/R.nvim/issues/298
+    if node then vim.schedule(function() end) end
+
+    if node and node:type() == "program" then node = node:child(0) end
 
     while node do
         local parent = node:parent()
@@ -153,7 +156,7 @@ M.set_send_cmd_fun = function()
 
     if config.RStudio_cmd ~= "" then
         M.cmd = require("r.rstudio").send_cmd_to_RStudio
-    elseif type(config.external_term) == "boolean" and config.external_term == false then
+    elseif config.external_term == "" then
         M.cmd = require("r.term").send_cmd_to_term
     elseif config.is_windows then
         M.cmd = require("r.windows").send_cmd_to_Rgui
@@ -569,9 +572,8 @@ end
 
 --- Send current line to R Console
 ---@param m boolean|string Movement to do after sending the line.
----@param lnum number Number of line to send (optional).
-M.line = function(m, lnum)
-    if not lnum then lnum = vim.api.nvim_win_get_cursor(0)[1] end
+M.line = function(m)
+    local lnum = vim.api.nvim_win_get_cursor(0)[1]
     local line = vim.fn.getline(lnum)
     local lang = get_lang()
     if lang == "chunk_child" then
@@ -592,6 +594,7 @@ M.line = function(m, lnum)
         return
     end
 
+    local ok = false
     if
         vim.bo.filetype == "rnoweb"
         or vim.bo.filetype == "rmd"
@@ -599,12 +602,12 @@ M.line = function(m, lnum)
     then
         if lang == "python" then
             line = 'reticulate::py_run_string("' .. line:gsub('"', '\\"') .. '")'
-            M.cmd(line)
-            if m == true then cursor.move_next_line() end
+            ok = M.cmd(line)
+            if ok and m == true then cursor.move_next_line() end
             return
         end
         if lang ~= "r" then
-            inform("Not inside R or Python code chunk.")
+            inform("Not inside R or Python code chunk [within " .. lang .. "]")
             return
         end
     end
@@ -617,17 +620,18 @@ M.line = function(m, lnum)
     local lines
     lines, lnum = get_code_to_send(line, lnum)
 
-    if #lines > 0 then
-        M.source_lines(lines, nil)
+    if #lines > 1 then
+        ok = M.source_lines(lines, nil)
     else
+        if #lines == 1 then line = lines[1] end
         if config.bracketed_paste then
-            M.cmd("\027[200~" .. line .. "\027[201~")
+            ok = M.cmd("\027[200~" .. line .. "\027[201~")
         else
-            M.cmd(line)
+            ok = M.cmd(line)
         end
     end
 
-    if m == true then
+    if ok and m == true then
         local last_line = vim.api.nvim_buf_line_count(0)
         -- Move to the last line of the sent expression
         vim.api.nvim_win_set_cursor(0, { math.min(lnum + 1, last_line), 0 })
@@ -753,13 +757,8 @@ M.funs = function(bufnr, capture_all, move_down)
 
     bufnr = bufnr or vim.api.nvim_get_current_buf()
 
-    if vim.bo[bufnr].filetype == "quarto" or vim.bo[bufnr].filetype == "rmd" then
-        vim.notify("Not yet supported in Rmd or Quarto files.")
-        return
-    end
-
-    if vim.bo[bufnr].filetype ~= "r" then
-        vim.notify("Not an R file.")
+    if vim.bo[bufnr].filetype ~= "r" and vim.bo[bufnr].filetype ~= "rnoweb" then
+        inform("Not yet supported in '" .. vim.bo[bufnr].filetype .. "' files.")
         return
     end
 

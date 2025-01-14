@@ -57,6 +57,7 @@ M.ask_R_doc = function(rkeyword, package, getclass)
             .. package
             .. '")'
     else
+        firstobj = firstobj:gsub('"', '\\"')
         rcmd = 'nvimcom:::nvim.help("'
             .. rkeyword
             .. '", '
@@ -77,7 +78,7 @@ M.show = function(rkeyword, txt)
     -- in the .Rprofile.
     local vpager
     if config.nvimpager == "no" then
-        if type(config.external_term) == "boolean" and not config.external_term then
+        if config.external_term == "" then
             vpager = "split_h"
         else
             vpager = "tab"

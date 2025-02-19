@@ -94,7 +94,7 @@ static char tmpdir[512]; // The environment variable RNVIM_TMPDIR.
 static int setwidth = 0; // Set the option width after each command is executed
 static int oldcolwd = 0; // Last set width.
 
-static int compl_method = 0;  // completion method, 0 = normal, 1 = buffer
+static int compl_method = 1;  // completion method, 0 = normal, 1 = buffer
 void set_compl_method(int m) { compl_method = m; }
 
 #ifdef WIN32

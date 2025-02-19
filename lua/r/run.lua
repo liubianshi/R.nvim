@@ -105,8 +105,8 @@ start_R2 = function()
         start_options,
         'options(nvimcom.source.path = "' .. config.source_read .. '")'
     )
-    if config.compl_method == "buffer" then
-        table.insert(start_options, '.C("set_compl_method", 1, PACKAGE = "nvimcom")')
+    if config.compl_method then
+        table.insert(start_options, 'nvimcom:::update_compl_method("' .. config.compl_method .. '")')
     end
     if
         config.set_params ~= "no"

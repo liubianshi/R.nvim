@@ -463,6 +463,14 @@ nvim_complete_args <- function(id, rkeyword, argkey, firstobj = "", lib = NULL, 
     return(invisible(NULL))
 }
 
+update_compl_method <- function(method) {
+    if (method == "normal") {
+        .C(set_compl_method, 0)
+    } else if (method == "buffer") {
+        .C(set_compl_method, 1)
+    }
+}
+
 update_params <- function(fname) {
     if (
         getOption("nvimcom.set_params") == "no" ||

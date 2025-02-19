@@ -90,6 +90,9 @@ local hooks = require("r.hooks")
 ---for more information.
 ---@field compl_data? { max_depth: integer, max_size: integer, max_time: integer }
 ---
+---Options for set completion method
+---@field compl_method? string
+---
 ---Whether to use R.nvim's configuration for Tmux if running R in an external
 ---terminal emulator. Set to `false` if you want to use your own `.tmux.conf`.
 ---Defaults to `true`. Do `:help config_tmux` for more information.

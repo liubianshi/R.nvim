@@ -8,6 +8,7 @@ static const R_CMethodDef CEntries[] = {
     {"nvimcom_Stop", (DL_FUNC) &nvimcom_Stop, 0},
     {"nvimcom_task", (DL_FUNC) &nvimcom_task, 0},
     {"nvimcom_msg_to_nvim", (DL_FUNC) &nvimcom_msg_to_nvim, 1},
+    {"set_compl_method", (DL_FUNC) &set_compl_method, 1},
     {NULL, NULL, 0}
 };
 

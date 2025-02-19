@@ -49,39 +49,19 @@ start_R2 = function()
         rdp = "datasets,utils,grDevices,graphics,stats,methods,nvimcom"
     end
     vim.env.R_DEFAULT_PACKAGES = rdp
-    local start_options = {
-        'Sys.setenv("R_DEFAULT_PACKAGES" = "' .. rdp .. '")',
-    }
 
-    table.insert(
-        start_options,
-        'Sys.setenv(RNVIM_RSLV_CB = "' .. vim.env.RNVIM_RSLV_CB .. '")'
-    )
-    table.insert(
-        start_options,
-        "options(nvimcom.max_depth = " .. tostring(config.compl_data.max_depth) .. ")"
-    )
-    table.insert(
-        start_options,
-        "options(nvimcom.max_size = " .. tostring(config.compl_data.max_size) .. ")"
-    )
-    table.insert(
-        start_options,
-        "options(nvimcom.max_time = " .. tostring(config.compl_data.max_time) .. ")"
-    )
-    table.insert(
-        start_options,
-        'options(nvimcom.set_params = "' .. config.set_params .. '")'
-    )
-    if
-        config.set_params ~= "no"
-        and (vim.o.filetype == "quarto" or vim.o.filetype == "rmd")
-        and require("r.rmd").params_status() == "new"
-    then
-        table.insert(
-            start_options,
-            'nvimcom:::update_params("' .. vim.api.nvim_buf_get_name(0) .. '")'
-        )
+    local start_options = {
+        'Sys.setenv(R_DEFAULT_PACKAGES = "' .. rdp:gsub(",nvimcom", "") .. '")',
+        'Sys.setenv(RNVIM_RSLV_CB = "' .. vim.env.RNVIM_RSLV_CB .. '")',
+        "options(nvimcom.max_depth = " .. tostring(config.compl_data.max_depth) .. ")",
+        "options(nvimcom.max_size = " .. tostring(config.compl_data.max_size) .. ")",
+        "options(nvimcom.max_time = " .. tostring(config.compl_data.max_time) .. ")",
+        'options(nvimcom.set_params = "' .. config.set_params .. '")',
+    }
+    if config.debug then
+        table.insert(start_options, "options(nvimcom.debug_r = TRUE)")
+    else
+        table.insert(start_options, "options(nvimcom.debug_r = FALSE)")
     end
     if config.objbr_allnames then
         table.insert(start_options, "options(nvimcom.allnames = TRUE)")
@@ -121,16 +101,21 @@ start_R2 = function()
     end
     local sep = config.view_df.csv_sep or "\t"
     table.insert(start_options, 'options(nvimcom.delim = "' .. sep .. '")')
-
     table.insert(
         start_options,
         'options(nvimcom.source.path = "' .. config.source_read .. '")'
     )
     if config.compl_method == "buffer" then
-      table.insert(
-          start_options,
-          '.C("set_compl_method", 1, PACKAGE = "nvimcom")'
-      )
+        table.insert(start_options, '.C("set_compl_method", 1, PACKAGE = "nvimcom")')
+    end
+    if
+        config.set_params ~= "no"
+        and (vim.o.filetype == "quarto" or vim.o.filetype == "rmd")
+        and require("r.rmd").params_status() == "new"
+    then
+        local bn = vim.api.nvim_buf_get_name(0)
+        if config.is_windows then bn = bn:gsub("\\", "\\\\") end
+        table.insert(start_options, 'nvimcom:::update_params("' .. bn .. '")')
     end
 
     local rsd = M.get_R_start_dir()
@@ -159,14 +144,10 @@ start_R2 = function()
         return
     end
 
-    if config.applescript then
-        warn("Support for running R.app may be removed. Please, see https://github.com/R-nvim/R.nvim/issues/309")
-        require("r.osx").start_Rapp()
-        return
-    end
-
     if config.is_windows then
-        warn("Support for running Rgui.exe may be removed. Please, see https://github.com/R-nvim/R.nvim/issues/308")
+        warn(
+            "Support for running Rgui.exe may be removed. Please, see https://github.com/R-nvim/R.nvim/issues/308"
+        )
         require("r.windows").start_Rgui()
         return
     end
@@ -232,9 +213,7 @@ end
 ---Send signal to R
 ---@param signal string | number
 M.signal_to_R = function(signal)
-    if R_pid ~= 0 then
-        utils.system({ "kill", "-s", tostring(signal), tostring(R_pid) })
-    end
+    if R_pid ~= 0 then vim.system({ "kill", "-s", tostring(signal), tostring(R_pid) }) end
 end
 
 M.check_nvimcom_running = function()
@@ -312,14 +291,6 @@ M.set_nvimcom_info = function(nvimcomversion, rpid, wid, r_info)
         then
             job.stdin("Server", "85" .. config.compldir .. "\n")
         end
-    elseif config.applescript then
-        vim.fn.foreground()
-        vim.wait(200)
-    else
-        vim.fn.delete(
-            config.tmpdir .. "/initterm_" .. vim.fn.string(vim.env.RNVIM_ID) .. ".sh"
-        )
-        vim.fn.delete(config.tmpdir .. "/openR")
     end
 
     if config.objbr_auto_start then
@@ -332,7 +303,7 @@ M.set_nvimcom_info = function(nvimcomversion, rpid, wid, r_info)
     end
 
     vim.g.R_Nvim_status = 7
-    hooks.run(config, "after_R_start")
+    hooks.run(config, "after_R_start", true)
     send.set_send_cmd_fun()
 end
 
@@ -405,7 +376,7 @@ end
 
 ---Request R to format code
 ---@param tbl table Table sent by Neovim's mapping function
-M.formart_code = function(tbl)
+M.format_code = function(tbl)
     if vim.g.R_Nvim_status < 7 then return end
 
     local wco = vim.o.textwidth

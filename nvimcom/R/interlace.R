@@ -308,9 +308,8 @@ nvim.interlace.rnoweb <- function(rnwf, rnwdir, latexcmd = "latexmk",
         if (pdff != "") {
             if (!grepl("^/", pdff))
                 pdff <- paste0(getwd(), "/", pdff)
-            .C("nvimcom_msg_to_nvim",
-               paste0("lua require('r.doc').open('", pdff, "', '')"),
-               PACKAGE = "nvimcom")
+            .C(nvimcom_msg_to_nvim,
+               paste0("lua require('r.doc').open('", pdff, "', '')"))
         }
     }
 
@@ -347,7 +346,7 @@ nvim.interlace.rmd <- function(Rmdfile, outform = NULL, rmddir, ...) {
                 fmt <- outform
             }
         }
-        res <- sub("qmd$", fmt, Rmdfile)
+        res <- normalizePath(sub("qmd$", fmt, Rmdfile), mustWork = FALSE)
         mtime1 <- file.info(res)$mtime
         quarto::quarto_render(Rmdfile, outform)
         mtime2 <- file.info(res)$mtime
@@ -360,11 +359,7 @@ nvim.interlace.rmd <- function(Rmdfile, outform = NULL, rmddir, ...) {
         }
         res <- rmarkdown::render(Rmdfile, outform, ...)
         if (exists("old_params", inherits = FALSE)) {
-            assign(
-                "params",
-                old_params,
-                envir = .GlobalEnv
-            )
+            assign("params", old_params, envir = .GlobalEnv)
         }
     }
     brwsr <- ""
@@ -377,8 +372,7 @@ nvim.interlace.rmd <- function(Rmdfile, outform = NULL, rmddir, ...) {
                 brwsr <- ""
         }
     }
-    .C("nvimcom_msg_to_nvim",
-       paste0("lua require('r.doc').open('", res, "', '", brwsr, "')"),
-       PACKAGE = "nvimcom")
+    .C(nvimcom_msg_to_nvim,
+       paste0("lua require('r.doc').open('", res, "', '", brwsr, "')"))
     return(invisible(NULL))
 }

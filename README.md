@@ -180,10 +180,12 @@ firm commitment to backwards compatibility.
   strings as is common in Quarto documents. See
   [execution-options](https://quarto.org/docs/computations/execution-options.html).
 
+- Integration with `Rapp` on macOS was removed (option `applescript`).
+
 ### Changes:
 
-- `<M-->` (i.e. `Alt + -`) is now used to insert `<-`. This can be configured
-    using `assignment_keymap`.
+- `<M-->` (i.e. `Alt + -`) is now used to insert `<-`. See the documentation
+  on how to create custom key bindings.
 
 - `R_source` and `after_R_start` have been replaced with more powerful `hook`
     options.
@@ -197,7 +199,7 @@ firm commitment to backwards compatibility.
 
 - `setwd` replaces `nvim_wd`. The new default value is `"no"`.
 
-- Only strings are valid values for `external_term` and `rmdchunk`.
+- Only strings are valid values for `external_term`.
 
 - `config_tmux` replaces `notmuxconf`. The new default value is `true`.
 
@@ -208,6 +210,10 @@ firm commitment to backwards compatibility.
   `csv_delim`, and `df_viewer`. The commands to see a `data.frame`
   or `matrix` in a split window were eliminated. See the documentation
   on `view_df` for alternative ways of getting similar results.
+
+- `rmdchunk` and `rnowebchunk` were removed. In Insert mode, press `<M-r>` to
+  insert chunks of R code in Rmd, Quarto or Rnoweb. See the documentation on
+  how to create custom key bindings.
 
 ### New features
 
@@ -233,8 +239,7 @@ firm commitment to backwards compatibility.
     [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) to be
     installed).
 
-- `<LocalLeader>,` inserts a pipe operator (`|>`). This keybinding is
-    configurable using `pipe_keymap`.
+- `<LocalLeader>,` inserts a pipe operator (`|>`).
 
 #### New options
 

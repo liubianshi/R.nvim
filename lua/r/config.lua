@@ -34,23 +34,11 @@ local hooks = require("r.hooks")
 ---Do `:help Rout_more_colors` for more information.
 ---@field Rout_more_colors? boolean
 ---
----Whether to use the R.app graphical application on Mac OS X. Defaults
----to `false`. Do `:help applescript` for more information.
----@field applescript? boolean
----
 ---Whether to remember the window layout when quitting R; defaults to `true`.
 ---Do `:help arrange_windows` for more information.
 ---@field arrange_windows? boolean
 ---
----The keymap used to insert `<-`; defaults to `<M-->`, i.e. Alt + M in most
----terminals. Do `:help assignment_keymap` for more information.
----@field assignment_keymap? string
----
----The keymap used to insert the pipe operator; defaults to `<localleader>,`.
----Do `:help pipe_keymap` for more information.
----@field pipe_keymap? string
----
----The version of the pipe operator to insert on `pipe_keymap`; defaults to
+---The version of the pipe operator to insert on pipe keymap; defaults to
 ---`"native"`. Do `:help pipe_version` for more information.
 ---@field pipe_version? '"native"' | '"|>"' | '"magrittr"' | '"%>%"'
 ---
@@ -106,6 +94,16 @@ local hooks = require("r.hooks")
 ---terminal emulator. Set to `false` if you want to use your own `.tmux.conf`.
 ---Defaults to `true`. Do `:help config_tmux` for more information.
 ---@field config_tmux? boolean
+---
+---Whether to enable support for debugging functions.
+---@field debug? boolean
+---
+---Whether to scroll the buffer to center the cursor on the window when
+---debugging jumping.
+---@field debug_center? boolean
+---
+---Whether to jump to R buffer while debugging a function.
+---@field debug_jump? boolean
 ---
 ---Control the program to use when viewing CSV files; defaults to `""`, i.e.
 ---to open these in a normal Neovim buffer. Do `:help view_df` for more
@@ -285,18 +283,9 @@ local hooks = require("r.hooks")
 ---`".GlobalEnv"`. Do `:help rmd_environment` for more information.
 ---@field rmd_environment? string
 ---
----Controls if and how backticks are replaced with code chunk/inline code
----delimiters when writing R Markdown and Quarto files. Do `:help rmdchunk`
----for more information.
----@field rmdchunk? string
----
 ---Whether to remove hidden objects from the workspace on `<LocalLeader>rm`;
 ---defaults to `false`. Do `:help rmhidden` for more information.
 ---@field rmhidden? boolean
----S
----Whether to replace `<` with `<<>>=\n@` when writing Rnoweb files; defaults
----to `true`. Do `:help rnowebchunk` for more information.
----@field rnowebchunk? boolean
 ---
 ---Controls whether the resulting `.Rout` file is not opened in a new tab when
 ---running `R CMD BATCH`; defaults to `false`. Do `:help routnotab` for more
@@ -401,10 +390,7 @@ local config = {
     R_cmd               = "R",
     R_path              = "",
     Rout_more_colors    = false,
-    applescript         = false,
     arrange_windows     = true,
-    assignment_keymap   = "<M-->",
-    pipe_keymap         = "<localleader>,",
     pipe_version        = "native",
     auto_scroll         = true,
     auto_start          = "no",
@@ -423,6 +409,9 @@ local config = {
     },
     compl_method        = "normal",
     config_tmux         = true,
+    debug               = true,
+    debug_center        = false,
+    debug_jump          = true,
     disable_cmds        = { "" },
     editing_mode        = "",
     esc_term            = true,
@@ -473,9 +462,7 @@ local config = {
     rm_knit_cache       = false,
     rmarkdown_args      = "",
     rmd_environment     = ".GlobalEnv",
-    rmdchunk            = "both",
     rmhidden            = false,
-    rnowebchunk         = true,
     rnvim_home          = "",
     routnotab           = false,
     rproj_prioritise    = {
@@ -705,7 +692,13 @@ local do_common_global = function()
         elseif vim.env.HOME then
             config.user_login = vim.fn.escape(vim.env.HOME, "\\"):gsub("\\", "")
         elseif vim.fn.executable("whoami") ~= 0 then
-            config.user_login = vim.fn.system("whoami")
+            local obj = vim.system({ "whoami" }, { text = true }):wait()
+            if obj and obj.stdout ~= "" then
+                config.user_login = obj.stdout:gsub("\n", "")
+            else
+                config.user_login = "WhoAmI"
+                swarn("The command whoami failled.")
+            end
         else
             config.user_login = "NoLoginName"
             swarn("Could not determine user name.")
@@ -997,7 +990,7 @@ local global_setup = function()
     vim.fn.timer_start(1, require("r.config").check_health)
     vim.schedule(function() require("r.server").check_nvimcom_version() end)
 
-    hooks.run(config, "after_config")
+    hooks.run(config, "after_config", true)
 
     gtime = (uv.hrtime() - gtime) / 1000000000
     require("r.edit").add_to_debug_info("global setup", gtime, "Time")
@@ -1030,7 +1023,11 @@ M.real_setup = function()
         did_real_setup = true
         global_setup()
     end
-    hooks.run(config, "on_filetype")
+
+    -- The third argument must be `false`, otherwise :RMapsDesc will not display
+    -- custom key mappings.
+    hooks.run(config, "on_filetype", false)
+
     require("r.rproj").apply_settings(config)
 
     if config.register_treesitter then
@@ -1069,7 +1066,7 @@ M.check_health = function()
         end)
     end
 
-    if vim.fn.has("nvim-0.9.5") ~= 1 then swarn("R.nvim requires Neovim >= 0.9.5") end
+    if vim.fn.has("nvim-0.10.4") ~= 1 then swarn("R.nvim requires Neovim >= 0.10.4") end
 
     -- Check if treesitter is available
     local function has_parser(parser_name, parsers)

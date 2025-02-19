@@ -6,6 +6,7 @@ local get_lang = require("r.utils").get_lang
 local job = require("r.job")
 local config = require("r.config").get_config()
 local check_latexcmd = true
+local chunk_key = nil
 
 local check_latex_cmd = function()
     check_latexcmd = false
@@ -153,22 +154,42 @@ end
 local M = {}
 
 M.write_chunk = function()
-    if vim.api.nvim_get_current_line() == "" then
-        local lang = get_lang()
-        if lang == "rnoweb" or lang == "latex" then
-            local curline = vim.api.nvim_win_get_cursor(0)[1]
+    local curpos = vim.api.nvim_win_get_cursor(0)
+    local curline = vim.api.nvim_get_current_line()
+    local lang = get_lang()
+
+    -- Check if cursor is in an empty LaTeX line
+    if lang == "latex" then
+        if curline == "" then
+            -- Insert new R code chunk template
             vim.api.nvim_buf_set_lines(
                 0,
-                curline - 1,
-                curline - 1,
+                curpos[1] - 1,
+                curpos[1] - 1,
                 true,
                 { "<<>>=", "@", "" }
             )
-            vim.api.nvim_win_set_cursor(0, { curline, 2 })
-            return
+            vim.api.nvim_win_set_cursor(0, { curpos[1], 2 })
+        else
+            -- \Sexpr{}
+            vim.api.nvim_set_current_line(
+                curline:sub(1, curpos[2]) .. "\\Sexpr{}" .. curline:sub(curpos[2] + 1)
+            )
+            vim.api.nvim_win_set_cursor(0, { curpos[1], curpos[2] + 7 })
         end
+        return
     end
-    vim.fn.feedkeys("<", "n")
+
+    -- Just insert the mapped key stroke
+    if not chunk_key then
+        chunk_key = require("r.utils").get_mapped_key("RnwInsertChunk")
+    end
+    if chunk_key then
+        vim.api.nvim_set_current_line(
+            curline:sub(1, curpos[2]) .. chunk_key .. curline:sub(curpos[2] + 1)
+        )
+        vim.api.nvim_win_set_cursor(0, { curpos[1], curpos[2] + #chunk_key })
+    end
 end
 
 --- Move the cursor to the previous chunk

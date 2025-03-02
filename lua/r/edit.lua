@@ -189,7 +189,7 @@ M.add_to_debug_info = function(title, info, parent)
 end
 
 M.build_tags = function()
-    if vim.fn.filereadable("etags") then
+    if vim.fn.filereadable("etags") == 1 then
         warn('The file "etags" exists. Please, delete it and try again.')
         return
     end
@@ -285,7 +285,7 @@ M.view_df = function(oname, txt)
         fname = oname
     end
 
-    if type(open_app) == "string" and open_app == "" then
+    if open_app == "" then
         if vim.fn.bufloaded(fname) == 1 then
             local sbopt = vim.o.switchbuf
             vim.o.switchbuf = "useopen,usetab"
@@ -323,11 +323,6 @@ M.view_df = function(oname, txt)
         vim.fn.writefile(csv_lines, tsvnm)
     end
     M.add_for_deletion(tsvnm)
-
-    if type(open_app) == "function" then
-        open_app(tsvnm)
-        return
-    end
 
     local cmd
     if open_app:find("%%s") then

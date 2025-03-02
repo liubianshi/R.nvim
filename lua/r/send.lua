@@ -6,8 +6,8 @@ local get_lang = require("r.utils").get_lang
 local edit = require("r.edit")
 local cursor = require("r.cursor")
 local paragraph = require("r.paragraph")
-local get_r_chunks_from_quarto = require("r.quarto").get_r_chunks_from_quarto
-local get_root_node = require("r.utils").get_root_node
+
+local create_r_buffer = require("r.buffer").create_r_buffer
 
 --- Check if line is a comment
 ---@param line string
@@ -157,13 +157,13 @@ M.set_send_cmd_fun = function()
     end
 
     if config.RStudio_cmd ~= "" then
-        M.cmd = require("r.rstudio").send_cmd_to_RStudio
+        M.cmd = require("r.rstudio").send_cmd
     elseif config.external_term == "" then
-        M.cmd = require("r.term").send_cmd_to_term
+        M.cmd = require("r.term").send_cmd
     elseif config.is_windows then
-        M.cmd = require("r.windows").send_cmd_to_Rgui
+        M.cmd = require("r.rgui").send_cmd
     else
-        M.cmd = require("r.external_term").send_cmd_to_external_term
+        M.cmd = require("r.external_term").send_cmd
     end
 end
 
@@ -401,7 +401,7 @@ M.chunks_up_to_here = function()
                             .. table.concat(chunklines, "\n"):gsub('"', '\\"')
                             .. '")'
                     )
-                else
+                elseif lang == "R" then
                     for _, v in pairs(chunklines) do
                         table.insert(codelines, v)
                     end
@@ -645,111 +645,115 @@ M.line = function(m)
     end
 end
 
--- Function to check if a string ends with a specific suffix
----@param str string
----@param suffix string
----@return boolean
-local function ends_with(str, suffix) return str:sub(-#suffix) == suffix end
-
-local function trim_lines(array)
-    local result = {} -- Create a new table to store the trimmed lines
-
-    for i = 1, #array do
-        local line = array[i]
-        local trimmedLine = line:match("^%s*(.-)%s*$") -- Remove leading and trailing whitespace
-        table.insert(result, trimmedLine) -- Add the trimmed line to the result table
-    end
-
-    return result
-end
-
--- Remove the <-, |>/%>% or + from the text
----@param array string[]
----@return string[]
-local function sanatize_text(array)
-    local firstString = array[1]
-    -- Remove "<-" and everything before it from the first string
-    local modifiedFirstString = firstString:gsub(".*<%-%s*", "")
-    array[1] = modifiedFirstString
-
-    local lastIndex = #array
-    local lastString = array[lastIndex]
-
-    -- Check if the last string ends with either "|>" or "%>%"
-    local modifiedString =
-        lastString:gsub("|>[%s]*$", ""):gsub("%%>%%[%s]*$", ""):gsub("%+[%s]*$", "")
-    array[lastIndex] = modifiedString
-
-    return array
-end
-
---- Check if string ends in one of specific pre-defined patterns
----@param str string
----@return boolean
-function ends_with(str)
-    return string.match(str, "[|%%]%>%%?[%s]*$") ~= nil
-        or string.match(str, "%+[%s]*$") ~= nil
-        or string.match(str, "%([%s]*$") ~= nil
-end
-
---- Return the line where piped chain begins
----@param arr string[]
----@return number
-local function chain_start_at(arr)
-    for i = 1, #arr do
-        if ends_with(arr[i]) then return i end
-    end
-
-    return #arr
-end
-
 --- Send the above chain of piped commands
 M.chain = function()
-    -- Get the current line, the start and end line of the paragraph
-    local current_line = vim.api.nvim_win_get_cursor(0)[1]
-    local startLine = vim.fn.search("^$", "bnW") -- Search for previous empty line
-    local endLine = vim.fn.search("^$", "nW") - 1 -- Search for next empty line and adjust for exclusive range
+    local bufnr = create_r_buffer()
+    if not bufnr then return end
 
-    -- Get the paragraph lines
-    local paragraphLines = vim.api.nvim_buf_get_lines(0, startLine, endLine, false)
-    paragraphLines = trim_lines(paragraphLines)
+    local parser = vim.treesitter.get_parser(bufnr, "r")
+    if not parser then return end
 
-    -- Get the relative line number within the paragraph
-    local relativeLineNumber = current_line - startLine
+    local tree = parser:parse()[1]
+    if not tree then return end
 
-    paragraphLines = trim_lines(paragraphLines)
+    local root = tree:root()
+    local query = vim.treesitter.query.parse(
+        "r",
+        [[
+        (_
+            (binary_operator
+                lhs: (_)
+                operator: ([("|>") ("<-") ("+") ("special")])
+                rhs: (call)
+            ) @pipeline_no_assign
+            (#not-has-parent? @pipeline_no_assign binary_operator)
+        )
 
-    local extractedLines = {}
-    for i = 1, relativeLineNumber do
-        table.insert(extractedLines, paragraphLines[i])
+        (_
+            ; Handle when the pipeline is assignment to a variable
+            (binary_operator
+                lhs: (identifier)
+                rhs: (binary_operator
+                    lhs: (_)
+                    operator: ([("|>") ("+") ("special")])
+                    rhs: (call)
+                ) @pipeline_with_assign
+            )
+        )
+        ]]
+    )
+
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local pipe_block_node
+
+    for _, node in query:iter_captures(root, bufnr, 0, -1) do
+        local start_row, _, end_row = node:range()
+        if cursor_row >= start_row and cursor_row <= end_row then
+            pipe_block_node = node
+            break
+        end
     end
 
-    -- Find the starting line of the chain
-    local lineChainStartAt = chain_start_at(extractedLines)
-
-    local chain = {}
-
-    for i = lineChainStartAt, relativeLineNumber do
-        table.insert(chain, extractedLines[i])
+    if not pipe_block_node then
+        inform("The cursor is not inside a piped expression.")
+        return
     end
 
-    chain = sanatize_text(chain)
+    local call_query = vim.treesitter.query.parse(
+        "r",
+        [[
+        (_
+            (binary_operator
+                lhs: (_)
+                operator: (["|>" "+" "special"] @operator)
+                rhs: (call) @call
+                (#not-has-ancestor? @call call) ;; Ensure the rhs is not inside another call
+            )
+        )
+        ]]
+    )
 
-    M.source_lines(chain, nil)
+    local sibling = nil
+    local visited = false
+
+    local pipe_start_row, _, pipe_end_row = pipe_block_node:range()
+
+    for id, node, _ in call_query:iter_captures(root, bufnr, pipe_start_row, pipe_end_row) do
+        local capture_name = call_query.captures[id]
+        local start_row, _, end_row = node:range()
+
+        if
+            capture_name == "operator" and visited
+            or cursor_row == pipe_block_node:range()
+        then
+            sibling = node:prev_sibling()
+            break
+        elseif capture_name == "call" then
+            if cursor_row >= start_row and cursor_row <= end_row then visited = true end
+        end
+    end
+
+    local captured_node = sibling or pipe_block_node
+
+    M.source_lines({ vim.treesitter.get_node_text(captured_node, bufnr) }, nil)
 end
 
---- Extracts R functions from the given R content based on the query and cursor position.
--- @param r_content The R content as a string.
--- @param capture_all Boolean indicating whether to capture all functions.
--- @param cursor_pos The current cursor position.
--- @param chunk_start_row The starting row of the chunk.
--- @return A table containing the extracted function lines.
-local extract_r_functions = function(r_content, capture_all, cursor_pos, chunk_start_row)
-    local r_parser = vim.treesitter.get_string_parser(r_content, "r")
-    local r_tree = r_parser:parse()[1]
-    local r_root = r_tree:root()
+--- Retrieves R function nodes from a given buffer using TreeSitter.
+---
+--- @param rbuf integer The buffer to analyze
+--- @return table A list of TreeSitter nodes representing R functions
+local r_fun_nodes = function(rbuf)
+    local parser = vim.treesitter.get_parser(rbuf, "r")
 
-    local r_fun_query = vim.treesitter.query.parse(
+    if not parser then
+        inform("Treesitter parser not found.")
+        return {}
+    end
+
+    local tree = parser:parse()[1]
+    local root = tree:root()
+
+    local query = vim.treesitter.query.parse(
         "r",
         [[
         (binary_operator
@@ -757,79 +761,60 @@ local extract_r_functions = function(r_content, capture_all, cursor_pos, chunk_s
         ]]
     )
 
-    local lines = {}
+    local nodes = {}
 
-    for _, node in r_fun_query:iter_captures(r_root, r_content) do
-        local start_row, _, end_row, _ = node:range()
-
-        -- Adjust the cursor position relative to the chunk start
-        local adjusted_cursor_pos = cursor_pos - (chunk_start_row or 0)
-
-        if
-            capture_all
-            or (
-                adjusted_cursor_pos >= start_row + 1
-                and adjusted_cursor_pos <= end_row + 1
-            )
-        then
-            local function_lines = vim.treesitter.get_node_text(node, r_content)
-            vim.list_extend(lines, { function_lines })
-        end
+    for _, node in query:iter_captures(root, rbuf, 0, -1) do
+        table.insert(nodes, node)
     end
 
-    return lines
+    return nodes
 end
 
-M.funs = function(bufnr, capture_all, move_down)
-    bufnr = bufnr or vim.api.nvim_get_current_buf()
+--- Captures and sources R functions from the current buffer.
+--- Can capture all functions or just the function at the cursor position.
+---
+--- @param capture_all boolean If true, captures all functions; if false, captures only the function at the cursor
+--- @param move_down boolean If true, moves the cursor to the end of the last captured function
+M.funs = function(capture_all, move_down)
+    local rbuf = create_r_buffer()
 
-    local filetype = vim.bo[bufnr].filetype
+    if not rbuf then return end
 
-    if
-        filetype ~= "r"
-        and filetype ~= "rnoweb"
-        and filetype ~= "quarto"
-        and filetype ~= "rmd"
-    then
-        inform("Not yet supported in '" .. filetype .. "' files.")
+    local nodes = r_fun_nodes(rbuf)
+
+    if not nodes or #nodes == 0 then
+        inform("No functions found.")
         return
     end
 
-    local root_node = get_root_node(bufnr)
-    if not root_node then return end
+    if rbuf == nil then
+        inform("Not in an R buffer.")
+        return
+    end
 
     local cursor_pos = vim.api.nvim_win_get_cursor(0)[1]
-
     local lines = {}
 
-    if filetype == "quarto" or filetype == "rmd" then
-        local r_chunks_content = get_r_chunks_from_quarto(root_node, bufnr)
+    -- Node used to move the cursor down at the end
+    local target_node = nil
 
-        for _, r_chunk in ipairs(r_chunks_content) do
-            local chunk_lines = extract_r_functions(
-                r_chunk.content,
-                capture_all,
-                cursor_pos,
-                r_chunk.start_row
-            )
-            vim.list_extend(lines, chunk_lines)
+    for _, node in ipairs(nodes) do
+        local start_row, _, end_row, _ = node:range()
+
+        if capture_all or (cursor_pos - 1 >= start_row and cursor_pos - 1 <= end_row) then
+            table.insert(lines, vim.treesitter.get_node_text(node, rbuf))
+            target_node = node
+            if not capture_all then break end
         end
-    else
-        local buffer_content =
-            table.concat(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n")
-        lines = extract_r_functions(buffer_content, capture_all, cursor_pos)
     end
 
-    if #lines > 0 then
-        M.source_lines(lines)
-        if move_down == true then
-            local last_function = lines[#lines]
-            local function_lines = vim.split(last_function, "\n")
-            local end_row = vim.api.nvim_win_get_cursor(0)[1] + #function_lines
-            local last_line = vim.api.nvim_buf_line_count(0)
-            vim.api.nvim_win_set_cursor(0, { math.min(end_row, last_line), 0 })
-            vim.cmd("normal! j")
-        end
+    M.source_lines(lines)
+
+    if move_down and target_node then
+        local _, _, end_row, _ = target_node:range()
+        vim.api.nvim_win_set_cursor(0, { end_row + 1, 0 })
+        cursor.move_next_line()
     end
 end
+
 return M

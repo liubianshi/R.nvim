@@ -1957,18 +1957,7 @@ Calc:
    open_app = "localc"
    open_app = "c:/Program Files (x86)/LibreOffice 4/program/scalc.exe"
 <
-`open_app` can be a Lua function which will receive a single argument: the name
-of the `tsv` file. Example on how to see the first five lines as a
-notification:
->lua
-   view_df = {
-     n_lines = 5,
-     open_app = function(file_name)
-       local lines = vim.fn.readfile(file_name)
-       vim.notify(table.concat(lines, "\n"))
-     end
-   }
-<
+
 The substring `%s` is replaced by the name of the object under the cursor, and
 `()` are added if necessary. In this case, no `csv` file is saved (see also
 |R.nvim-key-bindings|).
@@ -2188,6 +2177,7 @@ r.send.cmd(command)                                              *r.send.cmd()*
     Parameters: ~
         {command} (string)  Code to send to the current R session
 
+
 ==============================================================================
 8. Custom key bindings                                   *R.nvim-key-bindings*
 
@@ -2215,8 +2205,11 @@ key bindings. Examples:
 
 	   -- Emulate some of Nvim-R's default key bindings:
            vim.api.nvim_buf_set_keymap(0, "i", "_", "<Plug>RInsertAssign", { noremap = true })
-           vim.api.nvim_buf_set_keymap(0, "i", "<", "<Plug>RnwInsertChunk", { noremap = true })
-           vim.api.nvim_buf_set_keymap(0, "i", "`", "<Plug>RmdInsertChunk", { noremap = true })
+           if vim.bo.filetype == "rnoweb" then
+               vim.api.nvim_buf_set_keymap(0, "i", "<", "<Plug>RnwInsertChunk", { noremap = true })
+           elseif vim.bo.filetype == "rmd" or vim.bo.filetype == "quarto" then
+               vim.api.nvim_buf_set_keymap(0, "i", "`", "<Plug>RmdInsertChunk", { noremap = true })
+           end
        end,
    }
 <
@@ -2234,7 +2227,7 @@ inside the function passed to `hook.on_filetype` as in the examples below
        on_filetype = function()
            vim.api.nvim_buf_set_keymap(0, "n", "<LocalLeader>L", "<Cmd>lua require('r.run').action('levels')<CR>", {})
 
-           -- If you want an action over an selection, then the second
+           -- If you want an action over a selection, then the second
            -- argument must be the string `"v"`:
            -- In this case, the beginning and the end of the selection must be
            -- in the same line.
@@ -2255,10 +2248,11 @@ inside the function passed to `hook.on_filetype` as in the examples below
 ==============================================================================
 9. roxygen2 support                                          *R.nvim-roxygen2*
 
-R.nvim has supports to insert roxygen2 skeletons in R scripts. To insert a new
-roxygen2 block, you can use the `Roxygenize` function while the cursor is
+R.nvim supports the insertion of roxygen2 skeletons in R scripts. To insert a
+new roxygen2 block, you can use the `Roxygenize` function while the cursor is
 inside a function definition. If a block of roxygen2 is already present, no
 modification will be made.
+
 
 ==============================================================================
 10. History                                                   *R.nvim-history*

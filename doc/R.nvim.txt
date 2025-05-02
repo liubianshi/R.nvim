@@ -11,8 +11,9 @@ For Neovim >= 0.10.4
  4. Use                                         |R.nvim-use|
  5. Known bugs and workarounds                  |R.nvim-known-bugs|
  6. Options                                     |R.nvim-options|
- 7. Custom key bindings                         |R.nvim-key-bindings|
- 8. History                                     |R.nvim-history|
+ 7. Public Lua API                              |R.nvim-lua-api|
+ 8. Custom key bindings                         |R.nvim-key-bindings|
+ 9. History                                     |R.nvim-history|
 
 
 ==============================================================================
@@ -116,6 +117,11 @@ Main dependencies:
    Quarto: required to complete chunk options in `#|` comments in Quarto, Rmd
       and Rnoweb documents: https://quarto.org/
 
+   The R packages:
+      - `knitr`: to generate final documents from Rnoweb, Rmd or Quarto.
+      - `quarto`: to generate final documents from Quarto.
+      - `rmarkdown`: to generate final documents from Rmd.
+      - `styler`: to format R code.
 
 Additional dependencies for editing Rnoweb documents:
 
@@ -533,6 +539,9 @@ function definition (see |tags-and-searches|). The command `:RBuildTags` calls
 the R functions `rtags()` and `etags2ctags` to build the tags file for the R
 scripts in the current directory.
 
+As an alternative, R's `languageserver` can also jump to function
+definitions.
+
 
 ------------------------------------------------------------------------------
 4.6. Syntax highlight of .Rout files
@@ -642,6 +651,15 @@ the pattern is found, the cursor will jump to its position.
 The highlighting group used to highlight the line being debugged is the
 QuickFixLine (see |hl-QuickFixLine|). Its foreground and background colors are
 defined by your colorscheme.
+
+
+------------------------------------------------------------------------------
+4.8 roxygen2 support                                         *R.nvim-roxygen2*
+
+R.nvim supports the insertion of roxygen2 skeletons in R scripts. To insert a
+new roxygen2 block, you can use the `:Roxygenize` command while the cursor is
+inside a function definition. If a block of roxygen2 is already present, no
+modification will be made.
 
 
 ==============================================================================
@@ -807,6 +825,7 @@ command:
 <
 You may close the window opened by `:RConfigShow` by simply pressing `q`.
 
+|auto_quit|	    Quits R when quitting Neovim
 |auto_start|          Start R automatically
 |objbr_auto_start|    Start the Object Browser automatically
 |built-in-terminal|   Options to control Neovim's built-in terminal
@@ -855,6 +874,7 @@ You may close the window opened by `:RConfigShow` by simply pressing `q`.
 |rmarkdown_args|      Further options to be passed to `rmarkdown::render()`
 |quarto_render_args|  Options to be passed to `quarto::quarto_render()`
 |quarto_preview_args| Options to be passed to `quarto::quarto_preview()`
+|quarto_chunk_hl|     How to highlight code blocks in Quarto and Rmd
 |clear_line|          Clear R Console line before sending a command
 |editing_mode|        The mode defined in your `~/.inputrc`
 |pdfviewer|           PDF application used to open PDF documents
@@ -1466,6 +1486,23 @@ you should put in your config:
 >lua
    R_prompt_str = "»"
 <
+Similarly, if the `continue` option in your `~/.Rprofile` has ANSI scape codes,
+you should set the value of `R_continue_str`. Example:
+>lua
+   R_continue_str = "…"
+<
+Alternatively, you can set prompt and continuation strings in your
+`~/.Rprofile` without special characters if R was started by `R.nvim`.
+Example:
+>r
+ if (Sys.getenv("RNVIM_TMPDIR") == "") {
+     options(prompt = "\x1b[33m»\x1b[0m ",
+             continue = "\x1b[33m…\x1b[0m ")
+ } else {
+     options(prompt = "» ",
+             continue = "… ")
+ }
+<
 
 ------------------------------------------------------------------------------
 6.12. How to automatically open the .Rout file                   *routnotab*
@@ -1680,8 +1717,9 @@ Other options to be passed to `rmarkdown::render()` might be defined with
 <
 
 ------------------------------------------------------------------------------
-6.21. Quarto's render and preview options                *quarto_render_args*
+6.21. Quarto options                                      *quarto_render_args*
                                                          *quarto_preview_args*
+							     *quarto_chunk_hl*
 
 If you want to send the commands `quarto::quarto_render()` and
 `quarto::quarto_preview()` to R with additional arguments, you should define
@@ -1690,6 +1728,25 @@ config, as in the examples:
 >lua
    quarto_render_args = ", pandoc_args = c('-F', 'apafix.py')"
    quarto_preview_args = ", browse = FALSE"
+<
+R.nvim changes the background color of code blocks and adds a virtual text
+with the language of the code block to the right side of the header of the
+block. It also highlights YAML comments (prefixed with `#|`) with the
+foreground color of the tree-sitter highlighting group `@define` and comments
+prefixed with `# %%` with the foreground color of `@delimiter`. The background
+color is taken from |hl-CursorColumn| and the highlighting is updated on the
+|BufEnter| and |InsertLeave| events. The code of chunks with the field `eval:
+false` are highlighted with foreground color of |hl-Comment|, and chunks with
+the field `child` are highlighted with the foreground color of |hl-Ignore|.
+Below is an example of how to configure the highlighting:
+>lua
+   quarto_chunk_hl = {
+     highlight = false,               -- Highlight code blocks?
+     yaml_hl = false,                 -- Highlight YAML comments?
+     virtual_title = false,           -- Add language as virtual text?
+     bg = "#003010",                  -- Use a different background color
+     events = "BufEnter,TextChanged", -- Update the highlighting more often
+   },
 <
 
 ------------------------------------------------------------------------------
@@ -1848,12 +1905,19 @@ below:
        on_filetype =  function() vim.notify("R.nvim FileType event") end,
        after_config = function() vim.notify("R.nvim is configured") end,
        after_R_start = function() vim.notify("R was launched") end,
-       after_ob_open = nil,
+       after_ob_open = function() vim.notify("Object Browser") end,
    },
 <
 See |R.nvim-key-bindings| for a real example of how to use the `after_config`
-hook.
-
+hook. In the example below, the plugin `ccc.nvim` is disabled in the Object
+Browser buffer:
+>lua
+  hook = {
+    after_ob_open = function()
+      vim.cmd("CccHighlighterDisable")
+    end
+  }
+<
 
 ------------------------------------------------------------------------------
 6.29. Disable R.nvim commands                                 *user_maps_only*
@@ -2157,7 +2221,7 @@ debug. You can hold the highlighted line in the middle of the window with
 <
 
 ==============================================================================
-7. Public Lua API                                             *public-lua-api*
+7. Public Lua API                                             *R.nvim-lua-api*
 
 The Lua internals for R.nvim should be considered generally unstable and
 subject to change without notice. There are some exceptions to this rule,
@@ -2177,6 +2241,9 @@ r.send.cmd(command)                                              *r.send.cmd()*
     Parameters: ~
         {command} (string)  Code to send to the current R session
 
+See in the next section examples of using the API within the `on_filetype`
+hook.
+<
 
 ==============================================================================
 8. Custom key bindings                                   *R.nvim-key-bindings*
@@ -2185,17 +2252,27 @@ See |user_maps_only| if you want to inhibit the creation of default mappings.
 See |disable_cmds| if you only want to avoid the creation of some of them.
 
 When creating custom key bindings for R.nvim, you have to create a map to a
-<Plug> label which is mapped to the actual function to be executed.
-To see the description of all key bindings <Plug> labels and how they were
-mapped in the current session, do in Normal mode:
+<Plug>Label which is mapped to the actual function to be executed. That is,
+you create the first link of the complete key mapping:
+>
+   Key_combination ---> <Plug>Label ---> Command
+<
+To see the description of all key combinations and their respective
+<Plug>Labels, do in Normal mode:
 >vim
    :RMapsDesc
 <
 You may close the window opened by `:RMapsDesc` by simply pressing `q`. The
 prefix "RD" in the labels means "cursor down".
 
-The `on_filetype` hook from `R.nvim` config is a good place to add your custom
-key bindings. Examples:
+If `user_maps_only = true`, no `Key_combination --> <Plug>Label` is
+automatically created and the remaining `<Plug>Label ---> Command`
+becomes harmless.
+
+Whether you have set `user_maps_only` to `true` in your R.nvim config or just
+want to change the default key combination of some key mappings, the
+`on_filetype` hook from `R.nvim` config is a good place to add your custom key
+bindings. Examples:
 >lua
    hook = {
        on_filetype = function()
@@ -2241,21 +2318,16 @@ inside the function passed to `hook.on_filetype` as in the examples below
            -- object as argument, you can use `cmd()` from the `r.send` module
            -- to send it directly to R Console:
            vim.api.nvim_buf_set_keymap(0, "n", "<LocalLeader>S", "<Cmd>lua require('r.send').cmd('search()')<CR>", {})
+
+	   -- Close the last graphics window:
+	   vim.api.nvim_buf_set_keymap(0, "n", "cw", "<Cmd>lua require('r.send').cmd('dev.off()')<CR>", { noremap = true })
        end,
    }
 
 
-==============================================================================
-9. roxygen2 support                                          *R.nvim-roxygen2*
-
-R.nvim supports the insertion of roxygen2 skeletons in R scripts. To insert a
-new roxygen2 block, you can use the `Roxygenize` function while the cursor is
-inside a function definition. If a block of roxygen2 is already present, no
-modification will be made.
-
 
 ==============================================================================
-10. History                                                   *R.nvim-history*
+9. History                                                    *R.nvim-history*
 
 See: https://www.vim.org/scripts/script.php?script_id=2628
      https://groups.google.com/g/vim-r-plugin

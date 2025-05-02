@@ -555,10 +555,11 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
 
     // Add the object length
     if (xgroup == 2) {
-        snprintf(buf, 127, " [%d, %d]", length(Rf_GetRowNames(*x)), length(*x));
+        snprintf(buf, 127, "\xc2\xa0[%d, %d]", length(Rf_GetRowNames(*x)),
+                 length(*x));
         p = str_cat(p, buf);
     } else if (xgroup == 3) {
-        snprintf(buf, 127, " [%d]", length(*x));
+        snprintf(buf, 127, "\xc2\xa0[%d]", length(*x));
         p = str_cat(p, buf);
     } else if (xgroup == 4) {
         SEXP cmdSexp, cmdexpr;
@@ -583,7 +584,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
                      curenv, xname);
         }
         UNPROTECT(2);
-        snprintf(buf, 127, " [%d]", len);
+        snprintf(buf, 127, "\xc2\xa0[%d]", len);
         p = str_cat(p, buf);
     } else if (xgroup == 5) {
         len = Rf_length(R_lsInternal(*x, allnames));
@@ -1039,12 +1040,11 @@ static void SrcrefInfo(void) {
             size_t slen = strlen(CHAR(STRING_ELT(filename, 0)));
             char *buf = calloc(sizeof(char), (2 * slen + 56));
             char *buf2 = calloc(sizeof(char), (2 * slen + 56));
-            snprintf(buf, 2 * slen + 1, "%s",
-                    CHAR(STRING_ELT(filename, 0)));
+            snprintf(buf, 2 * slen + 1, "%s", CHAR(STRING_ELT(filename, 0)));
             nvimcom_squo(buf, buf2, 2 * slen + 32);
             snprintf(buf, 2 * slen + 55,
-                    "lua require('r.debug').jump('%s', %d)", buf2,
-                    asInteger(R_Srcref));
+                     "lua require('r.debug').jump('%s', %d)", buf2,
+                     asInteger(R_Srcref));
             send_to_nvim(buf);
             free(buf);
             free(buf2);

@@ -2,10 +2,10 @@ local config = require("r.config").get_config()
 local warn = require("r.log").warn
 local inform = require("r.log").inform
 local utils = require("r.utils")
-local get_lang = require("r.utils").get_lang
 local edit = require("r.edit")
 local cursor = require("r.cursor")
 local paragraph = require("r.paragraph")
+local quarto = require("r.quarto")
 
 local create_r_buffer = require("r.buffer").create_r_buffer
 
@@ -205,12 +205,8 @@ M.source_lines = function(lines, what)
 
     if #lines < config.max_paste_lines then
         rcmd = table.concat(lines, "\n")
-        if
-            (vim.o.filetype == "rmd" or vim.o.filetype == "quarto")
-            and get_lang() == "python"
-        then
-            rcmd = rcmd:gsub('"', '\\"')
-            rcmd = 'reticulate::py_run_string("' .. rcmd .. '")'
+        if what and what == "PythonCode" then
+            rcmd = 'reticulate::py_run_string(r"(' .. rcmd .. ')")'
         end
     else
         vim.fn.writefile(lines, config.source_write)
@@ -309,110 +305,48 @@ M.line_part = function(direction, correctpos)
 end
 
 --- Send to R Console a command to source the document child indicated in chunk header.
----@param line string The chunk header.
----@param m boolean True if should move to the next chunk.
-local knit_child = function(line, m)
-    local nline = line:gsub(".*child *[:=] *['\"]", "")
-    local cfile = nline:gsub("['\"].*", "")
+--- This function is used in R Markdown documents.
+---@class chunk
+---@return string
+local knit_child = function(chunk)
+    local cfile = chunk:get_child_param()
+
     if vim.fn.filereadable(cfile) == 1 then
-        M.cmd("require(knitr); knit('" .. cfile .. "', output=NULL)")
-        if m then
-            vim.api.nvim_win_set_cursor(0, { vim.api.nvim_win_get_cursor(0)[1] + 1, 1 })
-            cursor.move_next_line()
-        end
-    else
         warn("File not found: '" .. cfile .. "'")
+        return ""
     end
+
+    return "require(knitr); knit('" .. cfile .. "', output=NULL)"
 end
 
 --- Send to R Console a command to source a file containing all chunks of here
 --- code up to this one.
 M.chunks_up_to_here = function()
-    local filetype = vim.o.filetype
-    local codelines = {}
-    local here = vim.api.nvim_win_get_cursor(0)[1]
-    local curbuf = vim.fn.getline(1, "$")
-    local idx = 0
+    local bufnr = vim.api.nvim_get_current_buf()
 
-    local begchk, endchk, chdchk
+    local chunks = quarto.get_chunks_above_cursor(bufnr)
+    chunks = quarto.filter_code_chunks_by_eval(chunks)
+    chunks = quarto.filter_supported_langs(chunks)
 
-    if filetype == "rnoweb" then
-        begchk = "^<<.*>>=$"
-        endchk = "^@"
-        chdchk = "^<<.*child *= *"
-    elseif filetype == "rmd" or filetype == "quarto" then
-        begchk = "^[ \t]*```[ ]*{"
-        endchk = "^[ \t]*```$"
-        chdchk = "^```.*child *= *"
-    else
-        -- Should never happen
-        warn('Strange filetype (SendFHChunkToR): "' .. filetype .. '"')
+    if #chunks == 0 then
+        inform("No runnable code chunks found above the cursor.")
         return
     end
 
-    while idx < here do
-        if
-            curbuf[idx + 1]:find(begchk) and not curbuf[idx + 1]:find("[<, ]eval *= *F")
-        then
-            -- Child R chunk
-            if curbuf[idx + 1]:match(chdchk) then
-                -- First, run everything up to the child chunk and reset buffer
-                M.source_lines(codelines, "chunk")
-                codelines = {}
-
-                -- Next, run the child chunk and continue
-                knit_child(curbuf[idx + 1], false)
-                idx = idx + 1
-            else
-                local lang = "R"
-                if filetype == "rmd" or filetype == "quarto" then
-                    if curbuf[idx + 1]:find("{python") then
-                        lang = "python"
-                    elseif not curbuf[idx + 1]:find("{r") then
-                        lang = "other"
-                    end
-                end
-                idx = idx + 1
-                local i = idx + 1
-                local j = idx + 1
-                while not curbuf[idx + 1]:match(endchk) and idx < here do
-                    -- skip chunk if `eval: false` and `child: *`
-                    if curbuf[j]:find("^#| *eval: *false") then
-                        j = i - 1
-                        break
-                    elseif curbuf[j]:find("^#| *child: ") then
-                        M.source_lines(codelines, "chunk")
-                        codelines = {}
-                        knit_child(curbuf[j], false)
-                        j = i - 1
-                        break
-                    end
-                    idx = idx + 1
-                    j = idx
-                end
-                local chunklines = {}
-                for k = i, j, 1 do
-                    table.insert(chunklines, curbuf[k])
-                end
-                if lang == "python" then
-                    table.insert(
-                        codelines,
-                        'reticulate::py_run_string("'
-                            .. table.concat(chunklines, "\n"):gsub('"', '\\"')
-                            .. '")'
-                    )
-                elseif lang == "R" then
-                    for _, v in pairs(chunklines) do
-                        table.insert(codelines, v)
-                    end
-                end
-            end
+    -- Loop all the chunks and source them, except is the chunk has a child parameter
+    local lines = {}
+    for _, chunk in ipairs(chunks) do
+        local cfile = chunk:get_child_param()
+        if cfile then
+            table.insert(lines, knit_child(chunk))
         else
-            idx = idx + 1
+            local codelines = quarto.codelines_from_chunks({ chunk })
+            for _, v in pairs(codelines) do
+                table.insert(lines, v)
+            end
         end
     end
-
-    M.source_lines(codelines, "chunk")
+    if #lines > 0 then M.source_lines(lines, "chunk") end
 end
 
 -- TODO: Test if this version works: git blame me to see previous version.
@@ -450,7 +384,8 @@ end
 -- Function to get the marks which the cursor is between
 ---@param m boolean True if should move to the next line.
 M.marked_block = function(m)
-    if get_lang() ~= "r" then
+    local lang = utils.get_lang()
+    if lang ~= "r" and lang ~= "python" then
         inform("Not in R code.")
         return
     end
@@ -484,8 +419,9 @@ M.marked_block = function(m)
     if lineB < last_line then lineB = lineB - 1 end
 
     local lines = vim.api.nvim_buf_get_lines(0, lineA - 1, lineB, true)
-    local ok = M.source_lines(lines, "block")
 
+    local what = lang == "python" and "PythonCode" or "block"
+    local ok = M.source_lines(lines, what)
     if ok == 0 then return end
 
     if m == true and lineB ~= last_line then
@@ -497,12 +433,11 @@ end
 --- Send to R Console the selected lines
 ---@param m boolean True if should move to the next line.
 M.selection = function(m)
-    local lang = get_lang()
+    local lang = utils.get_lang()
 
     if
         (vim.o.filetype == "rmd" or vim.o.filetype == "quarto")
-        and lang ~= "r"
-        and lang ~= "python"
+        and not quarto.is_supported_lang(lang)
         and not vim.api.nvim_get_current_line():find("`r ")
     then
         inform("Not inside R or Python code chunk.")
@@ -511,7 +446,7 @@ M.selection = function(m)
 
     if
         vim.o.filetype == "rnoweb"
-        and lang ~= "r"
+        and not quarto.is_r(lang)
         and not vim.api.nvim_get_current_line():find("\\Sexpr{")
     then
         inform("Not inside R code chunk.")
@@ -571,47 +506,65 @@ M.selection = function(m)
 end
 
 --- Send current line to R Console
----@param m boolean|string Movement to do after sending the line.
+---@param m string Movement to do after sending the line.
 M.line = function(m)
     local lnum = vim.api.nvim_win_get_cursor(0)[1]
     local line = vim.fn.getline(lnum)
-    local lang = get_lang()
-    if lang == "chunk_child" then
-        if type(m) == "boolean" and m then
-            knit_child(line, true)
-        else
-            knit_child(line, false)
-        end
-        return
-    elseif lang == "chunk_end" then
-        if m == true then
-            if vim.bo.filetype == "rnoweb" then
-                require("r.rnw").next_chunk()
-            else
-                require("r.rmd").next_chunk()
+
+    local lang = utils.get_lang()
+
+    -- check if we are in a chunk
+    local chunk = quarto.get_current_code_chunk(vim.api.nvim_get_current_buf())
+
+    if not vim.tbl_isempty(chunk) then
+        local chunk_type = chunk:get_chunk_section_at_cursor()
+
+        if chunk_type == "chunk_child" then
+            local child_cmd = knit_child(chunk)
+            if child_cmd ~= "" then
+                M.cmd(child_cmd)
+                if m == "move" then require("r.rmd").next_chunk() end
             end
+            return
+        elseif chunk_type == "chunk_header" then
+            if vim.bo.filetype == "rnoweb" then
+                require("r.rnw").send_chunk(m == "move")
+            else
+                require("r.rmd").send_current_chunk(m == "move")
+            end
+            return
+        elseif chunk_type == "chunk_end" then
+            if m == "move" then
+                if vim.bo.filetype == "rnoweb" then
+                    require("r.rnw").next_chunk()
+                else
+                    require("r.rmd").next_chunk()
+                end
+            end
+            return
         end
-        return
     end
 
     local ok = false
+
     if
         vim.bo.filetype == "rnoweb"
         or vim.bo.filetype == "rmd"
         or vim.bo.filetype == "quarto"
     then
-        if lang == "python" then
-            line = 'reticulate::py_run_string("' .. line:gsub('"', '\\"') .. '")'
+        if quarto.is_python(lang) then
+            line = 'reticulate::py_run_string(r"(' .. line .. ')")'
             ok = M.cmd(line)
-            if ok and m == true then cursor.move_next_line() end
+            if ok and m == "move" then cursor.move_next_line() end
             return
         end
-        if lang ~= "r" then
-            inform("Not inside R or Python code chunk [within " .. lang .. "]")
+        if not quarto.is_r(lang) then
+            inform("Not inside R or Python code chunk.")
             return
         end
     end
 
+    -- Not in a chunk, send the line
     if vim.bo.filetype == "rhelp" and lang ~= "r" then
         inform("Not inside an R section.")
         return
@@ -631,7 +584,7 @@ M.line = function(m)
         end
     end
 
-    if ok and m == true then
+    if ok and m == "move" then
         local last_line = vim.api.nvim_buf_line_count(0)
         -- Move to the last line of the sent expression
         vim.api.nvim_win_set_cursor(0, { math.min(lnum + 1, last_line), 0 })

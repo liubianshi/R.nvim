@@ -6,5 +6,8 @@ then
     return
 end
 
+if vim.b.rnvim_quarto_config then return end
+vim.b.rnvim_quarto_config = true
+
 require("r.config").real_setup()
 require("r.rmd").setup()

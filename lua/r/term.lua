@@ -109,6 +109,21 @@ local split_window = function()
     end
 end
 
+M.toggle_win = function()
+    if not r_bufnr then return end
+    local wlist = vim.api.nvim_list_wins()
+    for _, wnr in ipairs(wlist) do
+        if vim.api.nvim_win_get_buf(wnr) == r_bufnr then
+            vim.api.nvim_win_hide(wnr)
+            return
+        end
+    end
+    local edbuf = vim.api.nvim_get_current_buf()
+    split_window()
+    vim.api.nvim_win_set_buf(0, r_bufnr)
+    vim.cmd.sb(edbuf)
+end
+
 M.reopen_win = function()
     if not r_bufnr then return end
     local wlist = vim.api.nvim_list_wins()

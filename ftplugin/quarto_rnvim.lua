@@ -11,3 +11,4 @@ vim.b.rnvim_quarto_config = true
 
 require("r.config").real_setup()
 require("r.rmd").setup()
+require("r.yaml").setup()

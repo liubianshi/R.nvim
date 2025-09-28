@@ -42,10 +42,6 @@ local hooks = require("r.hooks")
 ---Do `:help R_continue_str` for more information.
 ---@field R_continue_str? string
 ---
----Whether to remember the window layout when quitting R; defaults to `true`.
----Do `:help arrange_windows` for more information.
----@field arrange_windows? boolean
----
 ---The version of the pipe operator to insert on pipe keymap; defaults to
 ---`"native"`. Do `:help pipe_version` for more information.
 ---@field pipe_version? '"native"' | '"|>"' | '"magrittr"' | '"%>%"'
@@ -311,10 +307,6 @@ local hooks = require("r.hooks")
 ---information.
 ---@field rproj_prioritise? table<integer, RprojField>
 ---
----Whether to save the position of the R console on quit; defaults to `true`.
----Do `:help save_win_pos` for more information.
----@field save_win_pos? boolean
----
 ---Whether to set the `HOME` environmental variable; defaults to `true`.
 ---Do `:help set_home_env` for more information.
 ---@field set_home_env? boolean
@@ -380,17 +372,14 @@ local hooks = require("r.hooks")
 ---@class RConfig: RConfigUserOpts
 ---@field uname? string
 ---@field is_windows? boolean
----@field is_darwin? boolean
 ---@field rnvim_home? string
 ---@field uservimfiles? string
 ---@field user_login? string
 ---@field localtmpdir? string
 ---@field source_read? string
 ---@field source_write? string
----@field curview? string
 ---@field term_title? string -- Pid of window application.
 ---@field term_pid? integer -- Part of the window title.
----@field R_Tmux_pane? string
 
 -- stylua: ignore start
 ---@type RConfig
@@ -398,13 +387,12 @@ local config = {
     OutDec              = ".",
     RStudio_cmd         = "",
     R_app               = "R",
-    R_args              = {},
+    R_args              = { },
     R_cmd               = "R",
     R_path              = "",
     Rout_more_colors    = false,
     R_prompt_str        = "",
     R_continue_str      = "",
-    arrange_windows     = true,
     pipe_version        = "native",
     auto_scroll         = true,
     auto_start          = "no",
@@ -489,7 +477,6 @@ local config = {
     rproj_prioritise    = {
                                "pipe_version"
                           },
-    save_win_pos        = true,
     set_home_env        = true,
     setwidth            = 2,
     silent_term         = false,
@@ -518,8 +505,6 @@ local config = {
 
 local user_opts = {}
 local did_real_setup = false
-local unix = require("r.platform.unix")
-local windows = require("r.platform.windows")
 
 local smsgs = {}
 local swarn = function(msg) table.insert(smsgs, msg) end
@@ -546,7 +531,7 @@ local set_editing_mode = function()
 end
 
 local set_pdf_viewer = function()
-    if config.is_darwin then
+    if config.uname == "Darwin" then
         config.pdfviewer = "skim"
         if config.skim_app_path == "" then
             config.skim_app_path = "/Applications/Skim.app"
@@ -806,7 +791,7 @@ local check_readme = function()
     -- Create or update the README (objls_ files will be regenerated if older than
     -- the README).
     local need_readme = false
-    local first_line = "Last change in this file: 2024-10-29"
+    local first_line = "Last change in this file: 2025-09-13"
     if
         vim.fn.filereadable(config.compldir .. "/README") == 0
         or vim.fn.readfile(config.compldir .. "/README")[1] ~= first_line
@@ -876,15 +861,14 @@ end
 local do_common_global = function()
     config.uname = uv.os_uname().sysname
     config.is_windows = config.uname:find("Windows", 1, true) ~= nil
-    config.is_darwin = config.uname == "Darwin"
 
     set_pdf_viewer()
     set_directories()
     check_readme()
 
     -- Default values of some variables
-    if config.RStudio_cmd ~= "" or (config.is_windows and config.external_term ~= "") then
-        -- Sending multiple lines at once to either Rgui on Windows or RStudio does not work.
+    if config.RStudio_cmd ~= "" then
+        -- Sending multiple lines at once to RStudio does not work.
         config.max_paste_lines = 1
         config.bracketed_paste = false
         config.parenblock = false
@@ -892,8 +876,6 @@ local do_common_global = function()
 
     if config.external_term == "" then
         config.nvimpager = "split_h"
-        config.save_win_pos = false
-        config.arrange_windows = false
     else
         config.nvimpager = "tab"
         config.objbr_place = string.gsub(config.objbr_place, "console", "script")
@@ -901,14 +883,6 @@ local do_common_global = function()
     end
 
     if config.R_app:find("radian") then config.hl_term = false end
-
-    if config.is_windows then
-        config.save_win_pos = true
-        config.arrange_windows = true
-    else
-        config.save_win_pos = false
-        config.arrange_windows = false
-    end
 
     -- The environment variables RNVIM_COMPLCB and RNVIM_COMPLInfo must be defined
     -- before starting the rnvimserver because it needs them at startup.
@@ -952,16 +926,9 @@ local do_common_global = function()
         vim.env.WINDOWID = vim.v.windowid
     end
 
-    -- Current view of the object browser: .GlobalEnv X loaded libraries
-    config.curview = "None"
-
     -- Set the name of R executable
     if config.is_windows then
-        if config.external_term == "" then
-            config.R_app = "Rterm.exe"
-        else
-            config.R_app = "Rgui.exe"
-        end
+        config.R_app = "Rterm.exe"
         config.R_cmd = "R.exe"
     end
 
@@ -970,7 +937,7 @@ local do_common_global = function()
     vim.env.RNVIM_SECRET = vim.fn.rand()
 
     -- Avoid problems if either R_rconsole_width or R_rconsole_height is a float number
-    -- (https://github.com/jalvesaq/Nvim-R/issues/751#issuecomment-1742784447).
+    -- (https://github.com/jalvesaq/Vim-R/issues/751#issuecomment-1742784447).
     if type(config.rconsole_width) == "number" then
         config.rconsole_width = math.floor(config.rconsole_width)
     end
@@ -998,12 +965,13 @@ local global_setup = function()
     -- Fix some invalid values
     -- Calls to system() and executable() must run
     -- asynchronously to avoid slow startup on macOS.
-    -- See https://github.com/jalvesaq/Nvim-R/issues/625
+    -- See https://github.com/jalvesaq/Vim-R/issues/625
     do_common_global()
+
     if config.is_windows then
-        windows.configure(config)
+        require("r.platform.windows").configure(config)
     else
-        unix.configure(config)
+        require("r.platform.unix").configure(config)
     end
 
     -- Override default config values with user options for the second time.
@@ -1058,6 +1026,7 @@ M.real_setup = function()
     if config.register_treesitter then
         vim.treesitter.language.register("markdown", { "quarto", "rmd" })
     end
+    vim.treesitter.start()
 end
 
 --- Return the table with the final configure variables: the default values
@@ -1067,13 +1036,6 @@ M.get_config = function() return config end
 
 M.check_health = function()
     local htime = uv.hrtime()
-
-    -- Check if either Vim-R-plugin or Nvim-R is installed
-    if vim.fn.exists("*WaitVimComStart") ~= 0 then
-        swarn("Please, uninstall Vim-R-plugin before using R.nvim.")
-    elseif vim.fn.exists("*RWarningMsg") ~= 0 then
-        swarn("Please, uninstall Nvim-R before using R.nvim.")
-    end
 
     -- Check R_app asynchronously
     utils.check_executable(config.R_app, function(exists)

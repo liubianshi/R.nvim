@@ -9,7 +9,7 @@ void nvimcom_Stop(void);
 void nvimcom_msg_to_nvim(char **cmd);
 void nvimcom_task(void);
 void set_compl_method(int m);
-SEXP fmt_txt(SEXP txt, SEXP delim, SEXP nl);
+SEXP fmt_txt(SEXP txt);
 SEXP fmt_usage(SEXP fnm, SEXP args);
 
 #endif // NVIMCOM_H

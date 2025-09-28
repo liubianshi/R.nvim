@@ -159,11 +159,17 @@ M.set_send_cmd_fun = function()
     if config.RStudio_cmd ~= "" then
         M.cmd = require("r.rstudio").send_cmd
     elseif config.external_term == "" then
-        M.cmd = require("r.term").send_cmd
-    elseif config.is_windows then
-        M.cmd = require("r.rgui").send_cmd
+        M.cmd = require("r.term.builtin").send_cmd
+    elseif
+        config.external_term == "wezterm" or config.external_term == "wezterm_split"
+    then
+        M.cmd = require("r.term.wezterm").send_cmd
+    elseif config.external_term == "kitty" then
+        M.cmd = require("r.term.kitty").send_cmd
+    elseif config.external_term == "kitty_split" then
+        M.cmd = require("r.term.kitten").send_cmd
     else
-        M.cmd = require("r.external_term").send_cmd
+        M.cmd = require("r.term.tmux").send_cmd
     end
 end
 
@@ -436,7 +442,7 @@ M.selection = function(m)
     local lang = utils.get_lang()
 
     if
-        (vim.o.filetype == "rmd" or vim.o.filetype == "quarto")
+        vim.tbl_contains({ "markdown", "rmd", "quarto" }, vim.o.filetype)
         and not quarto.is_supported_lang(lang)
         and not vim.api.nvim_get_current_line():find("`r ")
     then
@@ -547,11 +553,7 @@ M.line = function(m)
 
     local ok = false
 
-    if
-        vim.bo.filetype == "rnoweb"
-        or vim.bo.filetype == "rmd"
-        or vim.bo.filetype == "quarto"
-    then
+    if vim.tbl_contains({ "rnoweb", "markdown", "rmd", "quarto" }, vim.bo.filetype) then
         if quarto.is_python(lang) then
             line = 'reticulate::py_run_string(r"(' .. line .. ')")'
             ok = M.cmd(line)
@@ -655,34 +657,24 @@ M.chain = function()
     local call_query = vim.treesitter.query.parse(
         "r",
         [[
-        (_
             (binary_operator
-                lhs: (_)
                 operator: (["|>" "+" "special"] @operator)
                 rhs: (call) @call
-                (#not-has-ancestor? @call call) ;; Ensure the rhs is not inside another call
             )
-        )
         ]]
     )
 
     local sibling = nil
-    local visited = false
 
     local pipe_start_row, _, pipe_end_row = pipe_block_node:range()
 
     for id, node, _ in call_query:iter_captures(root, bufnr, pipe_start_row, pipe_end_row) do
         local capture_name = call_query.captures[id]
-        local start_row, _, end_row = node:range()
+        local _, _, end_row = node:range()
 
-        if
-            capture_name == "operator" and visited
-            or cursor_row == pipe_block_node:range()
-        then
+        if capture_name == "operator" and cursor_row <= end_row then
             sibling = node:prev_sibling()
             break
-        elseif capture_name == "call" then
-            if cursor_row >= start_row and cursor_row <= end_row then visited = true end
         end
     end
 
@@ -755,13 +747,17 @@ M.funs = function(capture_all, move_down)
         local start_row, _, end_row, _ = node:range()
 
         if capture_all or (cursor_pos - 1 >= start_row and cursor_pos - 1 <= end_row) then
-            table.insert(lines, vim.treesitter.get_node_text(node, rbuf))
+            local ts_txt = vim.treesitter.get_node_text(node, rbuf)
+            local ts_lines = vim.fn.split(ts_txt, "\n")
+            for _, v in pairs(ts_lines) do
+                table.insert(lines, v)
+            end
             target_node = node
             if not capture_all then break end
         end
     end
 
-    M.source_lines(lines)
+    M.source_lines(lines, "function")
 
     if move_down and target_node then
         local _, _, end_row, _ = target_node:range()

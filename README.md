@@ -117,13 +117,14 @@ sources simultaneously is not advised.
 
 ### Tree-sitter
 
-Tree-sitter is required to enable much of the functionality of R.nvim, and can
-be minimally configured like so:
+Tree-sitter is required to enable much of the functionality of R.nvim. Note that nvim-treesitter has been completely rewritten on the [main branch](https://github.com/nvim-treesitter/nvim-treesitter/tree/main) and the configuration used in the [master branch](https://github.com/nvim-treesitter/nvim-treesitter/tree/master) is not compatible with the new version. In the example below, we provide minimal configurations for both branches. Please choose the one that matches your installation.
+
+If you are using [nvim-treesitter master branch](https://github.com/nvim-treesitter/nvim-treesitter/tree/master):
 
 ```lua
 {
     "nvim-treesitter/nvim-treesitter",
-    run = ":TSUpdate",
+    build = ":TSUpdate",
     config = function ()
         require("nvim-treesitter.configs").setup({
             ensure_installed = { "markdown", "markdown_inline", "r", "rnoweb", "yaml", "latex", "csv" },
@@ -131,6 +132,28 @@ be minimally configured like so:
         })
     end
 },
+```
+
+If you are using [nvim-treesitter main branch](https://github.com/nvim-treesitter/nvim-treesitter/tree/main):
+
+```lua
+{
+    "nvim-treesitter/nvim-treesitter",
+    branch = "main",
+    lazy = false,
+    build = ":TSUpdate",
+    config = function()
+        local langs = { "markdown", "markdown_inline", "r", "rnoweb", "yaml", "latex", "csv" }
+        require("nvim-treesitter").install(langs)
+
+        vim.api.nvim_create_autocmd("FileType", {
+            pattern = langs,
+            callback = function()
+                vim.treesitter.start()
+            end,
+        })
+    end,
+}
 ```
 
 ## Usage
@@ -151,13 +174,11 @@ notes for any breaking changes when upgrading.
 Eventually we plan to release a version 1.0.0, at which point we will make a
 firm commitment to backwards compatibility.
 
-## Transitioning from Nvim-R
+## Transitioning from Vim-R (Nvim-R)
 
 ### Removed features
 
 - reStructuredText support (no longer seems to be widely used).
-
-- Debugging support (a formal debug adaptor would be a better solution).
 
 - Legacy omni-completion (we now recommend
   [nvim-cmp](https://github.com/hrsh7th/nvim-cmp)).
@@ -212,9 +233,12 @@ firm commitment to backwards compatibility.
   how to create custom key bindings.
 
 - In a Quarto or RMarkdown document, when the cursor is over a chunk header
-  and you tries to send the current line and go to the next line, the whole
+  and you try to send the current line and go to the next line, the whole
   chunk is sent to R and the cursor jumps to the next chunk of either R or
   Python code.
+
+- Markdown documents are treated as RMarkdown if "markdown" is in
+  `vim.g.R_filetypes`.
 
 ### New features
 
@@ -253,6 +277,12 @@ firm commitment to backwards compatibility.
 - `objbr_mappings` can be configured to run R commands on objects in the
   current session.
 
+- `external_term` now accepts as valid values `"wezterm_split"` and
+  `"kitty_split"`, not requiring Tmux to split the terminal window.
+  It's possible to [WezTerm](https://wezterm.org/) to run R in an external
+  terminal emulator on Windows. Hence, the values `"wezterm"` and
+  `"wezterm_split"` are valid on Linux, macOS and Windows.
+
 ## Screenshots and videos
 
 None yet! Please let us know if you publish a video presenting R.nvim features 😃
@@ -278,11 +308,8 @@ There are three different ways of sending the commands to R Console:
   is used to send code to R Console.
 
 - When running R in an external terminal emulator, Tmux is used to send
-  commands to R Console.
-
-- On the Windows operating system, if using the `Rgui.exe` as "external
-  terminal", Nvim-R can send a message to R (nvimcom) which forwards the
-  command to R Console.
+  commands to R Console, but some terminal emulators have built-in multiplexer
+  capabilities and can be used without Tmux.
 
 The R package _nvimcom_ includes the application _rnvimserver_ which is never
 used by R itself but is run as a Neovim's job. That is, the communication

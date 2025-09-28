@@ -20,6 +20,86 @@ static int max_depth = 2;      // Max list depth in nvimcom
 
 void set_max_depth(int m) { max_depth = m; }
 
+/**
+ * @brief Reads the entire contents of a specified file into a buffer.
+ *
+ * This function opens the file specified by the filename and reads its entire
+ * content into a dynamically allocated buffer. It ensures that the file is read
+ * in binary mode to preserve the data format. This function is typically used
+ * to load files containing data relevant to the R.nvim plugin, such as
+ * completion lists or configuration data.
+ *
+ * @param fn The name of the file to be read.
+ * @param verbose Flag to indicate whether to print error messages. If set to a
+ * non-zero value, error messages are printed to stderr.
+ * @return Returns a pointer to a buffer containing the file's content if
+ * successful. Returns NULL if the file cannot be opened or in case of a read
+ * error.
+ */
+static char *read_file(const char *fn, int verbose) {
+    FILE *f = fopen(fn, "rb");
+    if (!f) {
+        if (verbose) {
+            fprintf(stderr, "Error opening '%s'", fn);
+            fflush(stderr);
+        }
+        return NULL;
+    }
+    fseek(f, 0L, SEEK_END);
+    long sz = ftell(f);
+    if (sz == 0) {
+        // List of objects is empty. Perhaps no object was created yet.
+        // The args_datasets files is empty
+        fclose(f);
+        return calloc(1, sizeof(char));
+    }
+
+    char *b = calloc(1, sz + 1);
+    if (!b) {
+        fclose(f);
+        fputs("Error allocating memory\n", stderr);
+        fflush(stderr);
+        return NULL;
+    }
+
+    rewind(f);
+    if (1 != fread(b, sz, 1, f)) {
+        fclose(f);
+        free(b);
+        fprintf(stderr, "Error reading '%s'\n", fn);
+        fflush(stderr);
+        return NULL;
+    }
+    fclose(f);
+    return b;
+}
+
+/**
+ * Compares two ASCII strings in a case-insensitive manner.
+ * @param a First string.
+ * @param b Second string.
+ * @return An integer less than, equal to, or greater than zero if a is found,
+ *         respectively, to be less than, to match, or be greater than b.
+ */
+static int ascii_ic_cmp(const char *a, const char *b) {
+    int d;
+    unsigned x, y;
+    while (*a && *b) {
+        x = (unsigned char)*a;
+        y = (unsigned char)*b;
+        if (x <= 'Z')
+            x += 32;
+        if (y <= 'Z')
+            y += 32;
+        d = x - y;
+        if (d != 0)
+            return d;
+        a++;
+        b++;
+    }
+    return 0;
+}
+
 static void change_all_stt(ListStatus *root, int stt) {
     if (root != NULL) {
         // Open all but libraries
@@ -66,6 +146,10 @@ static void skip_consecutive_spaces(const char *input, char *output) {
 
 static int read_field_data(char *s, int i) {
     while (s[i]) {
+        // Fix https://github.com/R-nvim/cmp-r/issues/17
+        if (s[i] == '\\')
+            s[i] = ' ';
+
         if (s[i] == '\n' && s[i + 1] == ' ') {
             s[i] = ' ';
             i++;
@@ -265,7 +349,7 @@ static PkgData *get_pkg(const char *nm) {
     return NULL;
 }
 
-static char *get_pkg_descr(const char *pkgnm) {
+static char *get_pkg_descr(const char *pkgnm, int again) {
     Log("get_pkg_descr(%s)", pkgnm);
     InstLibs *il = instlibs;
     while (il) {
@@ -276,136 +360,11 @@ static char *get_pkg_descr(const char *pkgnm) {
         }
         il = il->next;
     }
+    if (again) {
+        update_inst_libs();
+        return get_pkg_descr(pkgnm, 0);
+    }
     return NULL;
-}
-
-static PkgData *new_pkg_data(const char *nm, const char *vrsn) {
-    char buf[1024];
-
-    PkgData *pd = calloc(1, sizeof(PkgData));
-    pd->name = malloc((strlen(nm) + 1) * sizeof(char));
-    strcpy(pd->name, nm);
-    pd->version = malloc((strlen(vrsn) + 1) * sizeof(char));
-    strcpy(pd->version, vrsn);
-    pd->descr = get_pkg_descr(pd->name);
-    pd->loaded = 1;
-
-    snprintf(buf, 1023, "%s/objls_%s_%s", compldir, nm, vrsn);
-    pd->fname = malloc((strlen(buf) + 1) * sizeof(char));
-    strcpy(pd->fname, buf);
-
-    // Check if objls_ exist
-    pd->built = 1;
-    if (access(buf, F_OK) != 0) {
-        pd->built = 0;
-    }
-    return pd;
-}
-
-static void add_pkg(const char *nm, const char *vrsn) {
-    PkgData *tmp = pkgList;
-    pkgList = new_pkg_data(nm, vrsn);
-    pkgList->next = tmp;
-}
-
-void update_pkg_list(char *libnms) {
-    Log("update_pkg_list()");
-    char buf[512];
-    char *s, *nm, *vrsn;
-    PkgData *pkg;
-
-    // Consider that all packages were unloaded
-    pkg = pkgList;
-    while (pkg) {
-        pkg->loaded = 0;
-        pkg = pkg->next;
-    }
-
-    if (libnms) {
-        // called by nvimcom
-        Log("update_pkg_list != NULL");
-        while (*libnms) {
-            nm = libnms;
-            while (*libnms != '\003')
-                libnms++;
-            *libnms = 0;
-            libnms++;
-            vrsn = libnms;
-            while (*libnms != '\004')
-                libnms++;
-            *libnms = 0;
-            libnms++;
-            if (*libnms == '\n') // this was the last package
-                libnms++;
-
-            if (strstr(nm, " ") || strstr(vrsn, " ")) {
-                break;
-            }
-
-            pkg = get_pkg(nm);
-            if (pkg)
-                pkg->loaded = 1;
-            else
-                add_pkg(nm, vrsn);
-        }
-    } else {
-        // Called during the initialization with libnames_ created by
-        // R/before_rns.R to enable completion for functions loaded with the
-        // `library()` and `require()` commands in the file being edited.
-        char lbnm[128];
-        Log("update_pkg_list == NULL");
-
-        snprintf(buf, 511, "%s/libnames_%s", tmpdir, getenv("RNVIM_ID"));
-        FILE *flib = fopen(buf, "r");
-        if (!flib) {
-            fprintf(stderr, "Failed to open \"%s\"\n", buf);
-            fflush(stderr);
-            return;
-        }
-
-        while ((s = fgets(lbnm, 127, flib))) {
-            while (*s != '_')
-                s++;
-            *s = 0;
-            s++;
-            vrsn = s;
-            while (*s != '\n')
-                s++;
-            *s = 0;
-
-            pkg = get_pkg(lbnm);
-            if (pkg)
-                pkg->loaded = 1;
-            else
-                add_pkg(lbnm, vrsn);
-        }
-        fclose(flib);
-    }
-
-    // No command run yet
-    if (!pkgList)
-        return;
-
-    // Delete data from unloaded packages to ensure that reloaded packages go
-    // to the bottom of the Object Browser list
-    pkg = pkgList;
-    if (pkg->loaded == 0) {
-        pkgList = pkg->next;
-        pkg_delete(pkg);
-    } else {
-        PkgData *prev = pkg;
-        pkg = pkg->next;
-        while (pkg) {
-            if (pkg->loaded == 0) {
-                prev->next = pkg->next;
-                pkg_delete(pkg);
-                pkg = prev->next;
-            } else {
-                prev = pkg;
-                pkg = prev->next;
-            }
-        }
-    }
 }
 
 /**
@@ -474,24 +433,227 @@ static char *count_sep(char *b1, int *size) {
  * successful. Returns NULL if the buffer does not meet the expected format or
  * validation fails.
  */
-static char *check_omils_buffer(char *buffer, int *size) {
+static char *check_omils_buffer(char *b, int *size) {
     // Ensure that there are exactly 7 \006 between new line characters
-    buffer = count_sep(buffer, size);
+    b = count_sep(b, size);
 
-    if (!buffer)
+    if (!b)
         return NULL;
 
-    if (buffer) {
-        char *p = buffer;
+    if (b) {
+        char *p = b;
         while (*p) {
             if (*p == '\006')
                 *p = 0;
-            // if (*p == '\'')
-            //     *p = '\x13';
             p++;
         }
     }
-    return buffer;
+    return b;
+}
+
+/**
+ * @brief Reads the contents of an auto completion list file into a buffer.
+ *
+ * This function opens and reads the specified auto completion file (typically
+ * named 'objls_'). It allocates memory for the buffer and loads the file
+ * contents into it. The buffer is used to store completion items (like function
+ * names and variables) available in R packages for use in auto completion in
+ * Neovim. If the file is empty, it indicates that no completion items are
+ * available or the file is yet to be populated.
+ *
+ * @param fn The name of the file to be read.
+ * @param size A pointer to an integer where the size of the read data will be
+ * stored.
+ * @return Returns a pointer to a buffer containing the file contents if
+ * successful. Returns NULL if the file cannot be opened, is empty, or in case
+ * of a read error.
+ */
+static char *read_objls_file(const char *fn, int *size) {
+    char *b = read_file(fn, 1);
+    if (!b)
+        return NULL;
+
+    return check_omils_buffer(b, size);
+}
+
+static char *read_alias_file(const char *nm) {
+    char fnm[512];
+    snprintf(fnm, 511, "%s/alias_%s", compldir, nm);
+    char *b = read_file(fnm, 1);
+    if (!b)
+        return NULL;
+    char *p = b;
+    while (*p) {
+        if (*p == '\x09')
+            *p = 0;
+        p++;
+    }
+    return b;
+}
+
+static char *read_args_file(const char *nm) {
+    char fnm[512];
+    snprintf(fnm, 511, "%s/args_%s", compldir, nm);
+    char *b = read_file(fnm, 1);
+    if (!b)
+        return NULL;
+    char *p = b;
+    while (*p) {
+        if (*p == '\006')
+            *p = 0;
+        p++;
+    }
+    return b;
+}
+
+static void load_pkg_data(PkgData *pd) {
+    Log("load_pkg_data(%s)", pd->name);
+    int size;
+    if (!pd->descr)
+        pd->descr = get_pkg_descr(pd->name, 1);
+    pd->alias = read_alias_file(pd->name);
+    pd->args = read_args_file(pd->name);
+    if (!pd->objls) {
+        pd->nobjs = 0;
+        pd->objls = read_objls_file(pd->fname, &size);
+        if (size > 2)
+            for (int i = 0; i < size; i++)
+                if (pd->objls[i] == '\n')
+                    pd->nobjs++;
+    }
+}
+
+static PkgData *new_pkg_data(const char *nm, const char *vrsn) {
+    char buf[1024];
+
+    PkgData *pd = calloc(1, sizeof(PkgData));
+    pd->name = malloc((strlen(nm) + 1) * sizeof(char));
+    strcpy(pd->name, nm);
+    pd->version = malloc((strlen(vrsn) + 1) * sizeof(char));
+    strcpy(pd->version, vrsn);
+    pd->descr = get_pkg_descr(pd->name, 1);
+    pd->loaded = 1;
+
+    snprintf(buf, 1023, "%s/objls_%s_%s", compldir, nm, vrsn);
+    pd->fname = malloc((strlen(buf) + 1) * sizeof(char));
+    strcpy(pd->fname, buf);
+
+    // Check if objls_ exist
+    if (access(buf, F_OK) == 0) {
+        pd->built = 1;
+        load_pkg_data(pd);
+    }
+    return pd;
+}
+
+static void add_pkg(const char *nm, const char *vrsn) {
+    PkgData *tmp = pkgList;
+    pkgList = new_pkg_data(nm, vrsn);
+    pkgList->next = tmp;
+}
+
+void update_pkg_list(char *libnms) {
+    Log("update_pkg_list(%s)", libnms);
+    char buf[512];
+    char *s, *nm, *vrsn;
+    PkgData *pkg;
+
+    // Consider that all packages were unloaded
+    pkg = pkgList;
+    while (pkg) {
+        pkg->loaded = 0;
+        pkg = pkg->next;
+    }
+
+    if (libnms) {
+        // called by nvimcom
+        while (*libnms) {
+            nm = libnms;
+            while (*libnms != '\003')
+                libnms++;
+            *libnms = 0;
+            libnms++;
+            vrsn = libnms;
+            while (*libnms != '\004')
+                libnms++;
+            *libnms = 0;
+            libnms++;
+            if (*libnms == '\n') // this was the last package
+                libnms++;
+
+            if (strstr(nm, " ") || strstr(vrsn, " ")) {
+                break;
+            }
+
+            pkg = get_pkg(nm);
+            if (pkg)
+                pkg->loaded = 1;
+            else
+                add_pkg(nm, vrsn);
+        }
+    } else {
+        // Called during the initialization with libnames_ created by
+        // R/before_rns.R to enable completion for functions loaded with the
+        // `library()` and `require()` commands in the file being edited.
+        char lbnm[128];
+
+        snprintf(buf, 511, "%s/libnames_%s", tmpdir, getenv("RNVIM_ID"));
+        FILE *flib = fopen(buf, "r");
+        if (!flib) {
+            fprintf(stderr, "Failed to open \"%s\"\n", buf);
+            fflush(stderr);
+            return;
+        }
+
+        while ((s = fgets(lbnm, 127, flib))) {
+            while (*s != '_')
+                s++;
+            *s = 0;
+            s++;
+            vrsn = s;
+            while (*s != '\n')
+                s++;
+            *s = 0;
+
+            pkg = get_pkg(lbnm);
+            if (pkg)
+                pkg->loaded = 1;
+            else
+                add_pkg(lbnm, vrsn);
+        }
+        fclose(flib);
+    }
+
+    // No command run yet
+    if (!pkgList)
+        return;
+
+    // Delete data from unloaded packages to ensure that reloaded packages go
+    // to the bottom of the Object Browser list
+
+    // Delete unloaded packages from the beginning of the list
+    while (pkgList && pkgList->loaded == 0) {
+        pkg = pkgList;
+        pkgList = pkgList->next;
+        pkg_delete(pkg);
+    }
+
+    if (!pkgList)
+        return;
+
+    // Delete remaining unloaded packages
+    pkg = pkgList->next;
+    PkgData *prev = pkgList;
+    while (pkg) {
+        if (pkg->loaded == 0) {
+            prev->next = pkg->next;
+            pkg_delete(pkg);
+            pkg = prev->next;
+        } else {
+            prev = pkg;
+            pkg = prev->next;
+        }
+    }
 }
 
 /**
@@ -608,77 +770,6 @@ void toggle_list_status(char *s) {
         }
 
         p->status = !p->status;
-    }
-}
-
-/**
- * @brief Reads the contents of an auto completion list file into a buffer.
- *
- * This function opens and reads the specified auto completion file (typically
- * named 'objls_'). It allocates memory for the buffer and loads the file
- * contents into it. The buffer is used to store completion items (like function
- * names and variables) available in R packages for use in auto completion in
- * Neovim. If the file is empty, it indicates that no completion items are
- * available or the file is yet to be populated.
- *
- * @param fn The name of the file to be read.
- * @param size A pointer to an integer where the size of the read data will be
- * stored.
- * @return Returns a pointer to a buffer containing the file contents if
- * successful. Returns NULL if the file cannot be opened, is empty, or in case
- * of a read error.
- */
-static char *read_objls_file(const char *fn, int *size) {
-    char *buffer = read_file(fn, 1);
-    if (!buffer)
-        return NULL;
-
-    return check_omils_buffer(buffer, size);
-}
-
-static char *read_alias_file(const char *nm) {
-    char fnm[512];
-    snprintf(fnm, 511, "%s/alias_%s", compldir, nm);
-    char *buffer = read_file(fnm, 1);
-    if (!buffer)
-        return NULL;
-    char *p = buffer;
-    while (*p) {
-        if (*p == '\x09')
-            *p = 0;
-        p++;
-    }
-    return buffer;
-}
-
-static char *read_args_file(const char *nm) {
-    char fnm[512];
-    snprintf(fnm, 511, "%s/args_%s", compldir, nm);
-    char *buffer = read_file(fnm, 1);
-    if (!buffer)
-        return NULL;
-    char *p = buffer;
-    while (*p) {
-        if (*p == '\006')
-            *p = 0;
-        p++;
-    }
-    return buffer;
-}
-
-static void load_pkg_data(PkgData *pd) {
-    int size;
-    if (!pd->descr)
-        pd->descr = get_pkg_descr(pd->name);
-    pd->alias = read_alias_file(pd->name);
-    pd->args = read_args_file(pd->name);
-    if (!pd->objls) {
-        pd->nobjs = 0;
-        pd->objls = read_objls_file(pd->fname, &size);
-        if (size > 2)
-            for (int i = 0; i < size; i++)
-                if (pd->objls[i] == '\n')
-                    pd->nobjs++;
     }
 }
 

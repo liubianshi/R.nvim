@@ -8,8 +8,11 @@ local ts_available, treesitter_parsers = pcall(require, "nvim-treesitter.parsers
 ---@param parser_name string
 ---@return boolean
 local function parser_installed(parser_name)
-    return (ts_available and treesitter_parsers.has_parser(parser_name))
-        or pcall(vim.treesitter.query.get, parser_name, "highlights")
+    return (
+        ts_available
+        and treesitter_parsers.has_parser
+        and treesitter_parsers.has_parser(parser_name)
+    ) or pcall(vim.treesitter.query.get, parser_name, "highlights")
 end
 
 --- Create a buffer and check the languages at different cursor positions
@@ -33,6 +36,9 @@ local check_buffer = function(ft, lines, langs)
     vim.api.nvim_buf_set_lines(b, 0, -1, false, lines)
     vim.api.nvim_set_option_value("filetype", ft, { buf = b })
     vim.cmd("redraw")
+
+    -- Wait for treesitter to parse the buffer, likely a racing issue here
+    vim.wait(100)
 
     for k, v in pairs(langs) do
         vim.api.nvim_win_set_cursor(w, { v[2], v[3] })
@@ -132,10 +138,10 @@ M.check = function()
         vim.health.error("C compiler (`gcc` or `clang`) not found.")
     end
 
-    if vim.fn.exists("*WaitVimComStart") ~= 0 then
+    if vim.fn.exists("*RWarningMsg") ~= 0 then
+        vim.health.error("Please, uninstall Vim-R before using R.nvim.")
+    elseif vim.fn.exists("*WaitVimComStart") ~= 0 then
         vim.health.error("Please, uninstall Vim-R-plugin before using R.nvim.")
-    elseif vim.fn.exists("*RWarningMsg") ~= 0 then
-        vim.health.error("Please, uninstall Nvim-R before using R.nvim.")
     end
 
     if pcall(require, "cmp") then

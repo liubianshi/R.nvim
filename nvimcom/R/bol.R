@@ -1,4 +1,3 @@
-
 # For building omnls files
 #' @param x
 nvim.fix.string <- function(x, edq = FALSE) {
@@ -20,22 +19,12 @@ nvim.fix.string <- function(x, edq = FALSE) {
 #' @param objclass Class of first argument of the function.
 nvim.args <- function(funcname, txt = "", pkg = NULL, objclass = NULL) {
     # Adapted from: https://stat.ethz.ch/pipermail/ess-help/2011-March/006791.html
-    env_name <- ""
-    env <- NULL
-    if (grepl("$", funcname, fixed = TRUE)) {
-        funcname <- strsplit(funcname, "$", fixed = TRUE)[[1]]
-        env_name <- paste0(funcname[-length(funcname)], collapse = "$")
-        funcname <- funcname[length(funcname)]
-        try(env <- as.environment(eval(parse(text = env_name))), silent = TRUE)
-        if (is.null(env) || !existsFunction(funcname, where = env))
-            return("")
-    }
-
-    if (is.null(env) && !exists(funcname))
+    if (!exists(funcname, where = 1)) {
         return("")
+    }
     frm <- NA
     funcmeth <- NA
-    if (is.null(env) && !missing(objclass) && !nvim.grepl("[[:punct:]]", funcname)) {
+    if (!is.null(objclass) && !nvim.grepl("[[:punct:]]", funcname)) {
         saved.warn <- getOption("warn")
         options(warn = -1)
         on.exit(options(warn = saved.warn))
@@ -66,45 +55,46 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass = NULL) {
             if (existsFunction(deffun) && pkgname != ".GlobalEnv") {
                 funcname <- deffun
                 funcmeth <- deffun
-            } else if (pkgname == ".GlobalEnv" && !existsFunction(funcname)) {
+            } else if (!existsFunction(funcname)) {
                 return("")
             }
-            if (is.null(env) && is.primitive(get(funcname))) {
+            if (is.primitive(get(funcname))) {
                 a <- args(funcname)
-                if (is.null(a))
+                if (is.null(a)) {
                     return("")
+                }
                 frm <- formals(a)
-            } else if (!is.null(env)) {
-                try(frm <- formals(get(funcname, envir = env)), silent = TRUE)
-                if (length(frm) == 1 && is.na(frm))
-                    return("")
-            } else {
+            }  else {
                 try(frm <- formals(get(funcname, envir = globalenv())), silent = TRUE)
-                if (length(frm) == 1 && is.na(frm))
-                    return("")
+                if (length(frm) == 1 && is.na(frm)) return("")
             }
         } else {
             idx <- grep(paste0(":", pkg, "$"), search())
             if (length(idx)) {
                 ff <- "NULL"
-                tr <- try(ff <- get(paste0(funcname, ".default"), pos = idx), silent = TRUE)
-                if (inherits(tr, "try-error"))
+                tr <- try(
+                    ff <- get(paste0(funcname, ".default"), pos = idx),
+                    silent = TRUE
+                )
+                if (inherits(tr, "try-error")) {
                     ff <- get(funcname, pos = idx)
+                }
                 if (is.primitive(ff)) {
                     a <- args(ff)
-                    if (is.null(a))
+                    if (is.null(a)) {
                         return("")
+                    }
                     frm <- formals(a)
                 } else {
                     frm <- formals(ff)
                 }
             } else {
-                if (!isNamespaceLoaded(pkg))
+                if (!isNamespaceLoaded(pkg)) {
                     loadNamespace(pkg)
+                }
                 ff <- getAnywhere(funcname)
                 idx <- grep(pkg, ff$where)
-                if (length(idx))
-                    frm <- formals(ff$objs[[idx]])
+                if (length(idx)) frm <- formals(ff$objs[[idx]])
             }
         }
     }
@@ -115,25 +105,40 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass = NULL) {
         if (type == "symbol") {
             res <- append(res, paste0(field, "\x05"))
         } else if (type == "character") {
-            res <- append(res, paste0(field, "\x04\"",
-                                      nvim.fix.string(frm[[field]], TRUE), "\"\x05"))
+            res <- append(
+                res,
+                paste0(field, "\x04\"", nvim.fix.string(frm[[field]], TRUE), "\"\x05")
+            )
         } else if (type == "logical" || type == "double" || type == "integer") {
-            res <- append(res, paste0(field, "\x04", as.character(frm[[field]]), "\x05"))
+            res <- append(
+                res,
+                paste0(field, "\x04", as.character(frm[[field]]), "\x05")
+            )
         } else if (type == "NULL") {
             res <- append(res, paste0(field, "\x04NULL\x05"))
         } else if (type == "language") {
-            res <- append(res, paste0(field, "\x04",
-                                      nvim.fix.string(deparse(frm[[field]])), "\x05"))
+            res <- append(
+                res,
+                paste0(field, "\x04", nvim.fix.string(deparse(frm[[field]])), "\x05")
+            )
         } else if (type == "list") {
             res <- append(res, paste0(field, "\x04list()\x05"))
         } else {
             res <- append(res, paste0(field, "\x05"))
-            warning("nvim.args: ", paste(env_name, funcname, sep = "$"), " [", field, "]", " (typeof = ", type, ")")
+            warning(
+                "nvim.args: ",
+                funcname,
+                " [",
+                field,
+                "]",
+                " (typeof = ",
+                type,
+                ")"
+            )
         }
     }
 
     res <- paste0(res, collapse = "")
-
 
     if (length(res) == 0 || (length(res) == 1 && res == "")) {
         res <- ""
@@ -141,8 +146,9 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass = NULL) {
         if (is.null(pkg)) {
             info <- pkgname
             if (!is.na(funcmeth)) {
-                if (info != "")
+                if (info != "") {
                     info <- paste0(info, ", ")
+                }
                 info <- paste0(info, "function:", funcmeth, "()")
             }
             # TODO: Add the method name to the completion menu if (info != "")
@@ -169,14 +175,19 @@ nvim.grepl <- function(pattern, x) {
 #' @param printenv Library name
 #' @param x Object name
 nvim.getInfo <- function(printenv, x) {
-    if (is.null(NvimcomEnv$pkgdescr[[printenv]]))
+    if (is.null(NvimcomEnv$pkgdescr[[printenv]])) {
         return("\006\006")
+    }
 
     info <- NULL
-    als <- NvimcomEnv$pkgdescr[[printenv]]$alias[NvimcomEnv$pkgdescr[[printenv]]$alias[, "name"] == x, "alias"]
+    als <- NvimcomEnv$pkgdescr[[printenv]]$alias[
+        NvimcomEnv$pkgdescr[[printenv]]$alias[, "name"] == x,
+        "alias"
+    ]
     try(info <- NvimcomEnv$pkgdescr[[printenv]]$descr[[als]], silent = TRUE)
-    if (length(info) == 1)
+    if (length(info) == 1) {
         return(info)
+    }
     return("\006\006")
 }
 
@@ -191,13 +202,13 @@ nvim.getInfo <- function(printenv, x) {
 #' with 0 meanin no limit.
 nvim.cmpl.line <- function(x, envir, printenv, curlevel, maxlevel = 0) {
     # No support for names with apostrophes, such as magrittr::`n'est pas`
-    if (nvim.grepl("'", x))
+    if (nvim.grepl("'", x)) {
         return(invisible(NULL))
+    }
 
     if (curlevel == 0) {
         xx <- try(get(x, envir), silent = TRUE)
-        if (inherits(xx, "try-error"))
-            return(invisible(NULL))
+        if (inherits(xx, "try-error")) return(invisible(NULL))
     } else {
         x.clean <- gsub("$", "", x, fixed = TRUE)
         x.clean <- gsub("_", "", x.clean, fixed = TRUE)
@@ -205,7 +216,7 @@ nvim.cmpl.line <- function(x, envir, printenv, curlevel, maxlevel = 0) {
         if (haspunct[1]) {
             ok <- nvim.grepl("[[:alnum:]]\\.[[:alnum:]]", x.clean)
             if (ok[1]) {
-                haspunct  <- FALSE
+                haspunct <- FALSE
                 haspp <- nvim.grepl("[[:punct:]][[:punct:]]", x.clean)
                 if (haspp[1]) haspunct <- TRUE
             }
@@ -230,13 +241,26 @@ nvim.cmpl.line <- function(x, envir, printenv, curlevel, maxlevel = 0) {
         x.class <- ""
         x.group <- "*"
     } else {
-        if (x == "break" || x == "next" || x == "for" || x == "if" || x == "repeat" || x == "while") {
+        if (
+            x == "break" ||
+                x == "next" ||
+                x == "for" ||
+                x == "if" ||
+                x == "repeat" ||
+                x == "while"
+        ) {
             x.group <- ";"
             x.class <- "flow-control"
         } else {
             x.class <- class(xx)[1]
             if (is.function(xx)) {
                 x.group <- "f"
+            } else if (is.list(xx)) {
+                x.group <- "["
+            } else if (isS4(xx)) {
+                x.group <- "<"
+            } else if (inherits(xx, "S7_object")) {
+                x.group <- ">"
             } else if (is.numeric(xx)) {
                 x.group <- "{"
             } else if (is.factor(xx)) {
@@ -247,8 +271,6 @@ nvim.cmpl.line <- function(x, envir, printenv, curlevel, maxlevel = 0) {
                 x.group <- "%"
             } else if (is.data.frame(xx)) {
                 x.group <- "$"
-            } else if (is.list(xx)) {
-                x.group <- "["
             } else if (is.environment(xx)) {
                 x.group <- ":"
             } else {
@@ -262,66 +284,138 @@ nvim.cmpl.line <- function(x, envir, printenv, curlevel, maxlevel = 0) {
     if (curlevel == maxlevel || maxlevel == 0) {
         if (x.group == "f") {
             if (curlevel == 0) {
-                if (nvim.grepl("GlobalEnv", printenv)) {
-                    cat(n, "\006(\006function\006", printenv, "\006",
-                        nvim.args(x), "\n", sep = "")
-                } else {
-                    info <- nvim.getInfo(printenv, x)
-                    cat(n, "\006(\006function\006", printenv, "\006",
-                        nvim.args(x, pkg = printenv), info, "\006\n", sep = "")
-                }
+                info <- nvim.getInfo(printenv, x)
+                cat(
+                    n,
+                    "\006(\006function\006",
+                    printenv,
+                    "\006",
+                    nvim.args(x, pkg = printenv),
+                    info,
+                    "\006\n",
+                    sep = ""
+                )
             } else {
                 # some libraries have functions as list elements
-                cat(n, "\006(\006function\006", printenv,
-                    "\006\006\006\006\n", sep = "")
+                cat(
+                    n,
+                    "\006(\006function\006",
+                    printenv,
+                    "\006\006\006\006\n",
+                    sep = ""
+                )
             }
         } else {
             if (is.list(xx) || is.environment(xx)) {
                 if (curlevel == 0) {
                     info <- nvim.getInfo(printenv, x)
                     if (is.data.frame(xx)) {
-                        cat(n, "\006", x.group, "\006", x.class, "\006", printenv,
-                            "\006[", nrow(xx), ", ", ncol(xx), "]", info, "\006\n", sep = "")
+                        cat(
+                            n,
+                            "\006",
+                            x.group,
+                            "\006",
+                            x.class,
+                            "\006",
+                            printenv,
+                            "\006[",
+                            nrow(xx),
+                            ", ",
+                            ncol(xx),
+                            "]",
+                            info,
+                            "\006\n",
+                            sep = ""
+                        )
                     } else if (is.list(xx)) {
-                        cat(n, "\006", x.group, "\006", x.class, "\006", printenv,
-                            "\006", length(xx), info, "\006\n", sep = "")
+                        cat(
+                            n,
+                            "\006",
+                            x.group,
+                            "\006",
+                            x.class,
+                            "\006",
+                            printenv,
+                            "\006",
+                            length(xx),
+                            info,
+                            "\006\n",
+                            sep = ""
+                        )
                     } else {
-                        cat(n, "\006", x.group, "\006", x.class, "\006", printenv,
-                            "\006[]", info, "\006\n", sep = "")
+                        cat(
+                            n,
+                            "\006",
+                            x.group,
+                            "\006",
+                            x.class,
+                            "\006",
+                            printenv,
+                            "\006[]",
+                            info,
+                            "\006\n",
+                            sep = ""
+                        )
                     }
                 } else {
-                    cat(n, "\006", x.group, "\006", x.class, "\006", printenv,
-                        "\006[]\006\006\006\n", sep = "")
+                    cat(
+                        n,
+                        "\006",
+                        x.group,
+                        "\006",
+                        x.class,
+                        "\006",
+                        printenv,
+                        "\006[]\006\006\006\n",
+                        sep = ""
+                    )
                 }
             } else {
                 info <- nvim.getInfo(printenv, x)
                 if (info == "\006\006") {
-                    xattr <- try(attr(xx, "label"), silent = TRUE)
-                    if (!inherits(xattr, "try-error") && !is.null(xattr) && length(xattr) == 1)
+                    xattr <- try(attr(xx, "label", exact = TRUE), silent = TRUE)
+                    if (
+                        !inherits(xattr, "try-error") &&
+                            !is.null(xattr) &&
+                            length(xattr) == 1
+                    ) {
                         info <- paste0("\006\006", nvim.fix.string(.Call(rd2md, xattr)))
+                    }
                 }
-                cat(n, "\006", x.group, "\006", x.class, "\006", printenv,
-                    "\006[]", info, "\006\n", sep = "")
+                cat(
+                    n,
+                    "\006",
+                    x.group,
+                    "\006",
+                    x.class,
+                    "\006",
+                    printenv,
+                    "\006[]",
+                    info,
+                    "\006\n",
+                    sep = ""
+                )
             }
         }
     }
 
-    if ((is.list(xx) || is.environment(xx)) && curlevel <= maxlevel) {
-        obj.names <- names(xx)
-        curlevel <- curlevel + 1
-        xxl <- length(xx)
-        if (!is.null(xxl) && xxl > 0) {
-            for (k in obj.names) {
-                nvim.cmpl.line(paste0(x, "$", k), envir, printenv, curlevel, maxlevel)
-            }
+    if (curlevel <= maxlevel) {
+        if ((is.list(xx) || is.environment(xx))) {
+            obj.names <- names(xx)
+            s <- "$"
+        } else if (x.group == "<") {
+            obj.names <- slotNames(xx)
+            s <- "@"
+        } else if (x.group == ">") {
+            s7c <- S7::S7_class(xx)
+            obj.names <- names(s7c@properties)
+            s <- "@"
+        } else {
+            obj.names <- NULL
         }
-    } else if (isS4(xx) && curlevel <= maxlevel) {
-        obj.names <- slotNames(xx)
-        curlevel <- curlevel + 1
-        xxl <- length(xx)
-        if (!is.null(xxl) && xxl > 0) {
+        if (!is.null(obj.names) && length(obj.names) > 0) {
             for (k in obj.names) {
-                nvim.cmpl.line(paste0(x, "@", k), envir, printenv, curlevel, maxlevel)
+                nvim.cmpl.line(paste0(x, s, k), envir, printenv, curlevel + 1, maxlevel)
             }
         }
     }
@@ -337,23 +431,31 @@ GetFunDescription <- function(pkg) {
     idx <- paste0(pth, "aliases.rds")
 
     # Development packages might not have any written documentation yet
-    if (!file.exists(idx) || !file.info(idx)$size)
+    if (!file.exists(idx) || !file.info(idx)$size) {
         return(NULL)
+    }
 
     als <- readRDS(idx)
     als <- cbind(unname(als), names(als))
     colnames(als) <- c("alias", "name")
-    write.table(als, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE,
-                file = paste0(Sys.getenv("RNVIM_COMPLDIR"), "/alias_", pkg))
+    write.table(
+        als,
+        sep = "\t",
+        row.names = FALSE,
+        col.names = FALSE,
+        quote = FALSE,
+        file = paste0(Sys.getenv("RNVIM_COMPLDIR"), "/alias_", pkg)
+    )
 
-    if (!file.exists(paste0(pth, pkg, ".rdx")))
+    if (!file.exists(paste0(pth, pkg, ".rdx"))) {
         return(NULL)
+    }
     pkgRdDB <- tools:::fetchRdDB(paste0(pth, pkg))
     NvimcomEnv$pkgRdDB[[pkg]] <- pkgRdDB
 
     GetDescr <- function(x) {
         tags <- tools:::RdTags(x)
-        x[which(!(tags %in% c(c("\\title", "\\name", "\\description"))))] <-  NULL
+        x[which(!(tags %in% c(c("\\title", "\\name", "\\description"))))] <- NULL
         x <- paste0(x, collapse = "")
         ttl <- .Call(get_section, x, "title")
         dsc <- .Call(get_section, x, "description")
@@ -362,30 +464,46 @@ GetFunDescription <- function(pkg) {
         x <- paste0("\006", ttl, "\006", dsc)
         x
     }
-    NvimcomEnv$pkgdescr[[pkg]] <- list("descr" = sapply(pkgRdDB, GetDescr),
-                                       "alias" = als)
+    NvimcomEnv$pkgdescr[[pkg]] <- list(
+        "descr" = sapply(pkgRdDB, GetDescr),
+        "alias" = als
+    )
 }
 
 #' @param x
 filter.objlist <- function(x) {
-    x[!grepl("^[\\[\\(\\{:-@%/=+\\$<>\\|~\\*&!\\^\\-]", x) & !startsWith(x, ".__")]
+    x[
+        !grepl("^[\\[\\(\\{:-@%/=+\\$<>\\|~\\*&!\\^\\-]", x) & !startsWith(x, ".__")
+    ]
 }
 
 get_arg_doc_list <- function(fun, pkg) {
     rdo <- NULL
     try(rdo <- NvimcomEnv$pkgRdDB[[pkg]][[fun]], silent = FALSE)
-    if (is.null(rdo))
+    if (is.null(rdo)) {
         return(invisible(NULL))
+    }
 
     atbl <- tools:::.Rd_get_argument_table(rdo)
-    if (length(atbl) == 0)
+    if (length(atbl) == 0) {
         return(invisible(NULL))
+    }
 
     atbl[, 1] <- gsub("\\\\dots", "...", atbl[, 1])
-    args <- apply(atbl, 1,
-                  function(x)
-                      paste0(x[1], "\x05`", gsub(", ", "`, `", x[1]), "`: ",
-                             .Call(rd2md, x[2]), "\x06"))
+    args <- apply(
+        atbl,
+        1,
+        function(x) {
+            paste0(
+                x[1],
+                "\x05`",
+                gsub(", ", "`, `", x[1]),
+                "`: ",
+                .Call(rd2md, x[2]),
+                "\x06"
+            )
+        }
+    )
     line <- nvim.fix.string(paste0(fun, "\x06", paste0(args, collapse = "")))
     cat(line, sep = "", "\n")
 }
@@ -395,8 +513,9 @@ get_arg_doc_list <- function(fun, pkg) {
 #' @param afile Full path of the `args_` file.
 #' @param pkg Library name.
 nvim.buildargs <- function(afile, pkg) {
-    if (is.null(NvimcomEnv$pkgRdDB[[pkg]]))
+    if (is.null(NvimcomEnv$pkgRdDB[[pkg]])) {
         return(invisible(NULL))
+    }
 
     nms <- names(NvimcomEnv$pkgRdDB[[pkg]])
     sink(afile)
@@ -417,17 +536,21 @@ nvim.bol <- function(cmpllist, libname) {
     on.exit(options(nvim.OutDec))
     options(OutDec = ".")
 
-    if (is.null(NvimcomEnv$pkgdescr[[libname]]))
+    if (is.null(NvimcomEnv$pkgdescr[[libname]])) {
         GetFunDescription(libname)
+    }
 
     loadpack <- search()
     packname <- paste0("package:", libname)
 
     if (nvim.grepl(paste0(packname, "$"), loadpack) == FALSE) {
-        ok <- try(require(libname, warn.conflicts = FALSE,
-                          quietly = TRUE, character.only = TRUE))
-        if (!ok)
-            return(invisible(NULL))
+        ok <- try(require(
+            libname,
+            warn.conflicts = FALSE,
+            quietly = TRUE,
+            character.only = TRUE
+        ))
+        if (!ok) return(invisible(NULL))
     }
 
     obj.list <- objects(packname, all.names = TRUE)
@@ -439,9 +562,17 @@ nvim.bol <- function(cmpllist, libname) {
         sink(cmpllist, append = FALSE)
         for (obj in obj.list) {
             ol <- try(nvim.cmpl.line(obj, packname, libname, 0))
-            if (inherits(ol, "try-error"))
-                warning(paste0("Error while generating completion line for: ",
-                               obj, " (", packname, ", ", libname, ").\n"))
+            if (inherits(ol, "try-error")) {
+                warning(paste0(
+                    "Error while generating completion line for: ",
+                    obj,
+                    " (",
+                    packname,
+                    ", ",
+                    libname,
+                    ").\n"
+                ))
+            }
         }
         sink()
     } else {
@@ -455,10 +586,12 @@ nvim.bol <- function(cmpllist, libname) {
 nvim.build.cmplls <- function(p) {
     if (length(p) > 1) {
         n <- 0
-        for (pkg in p)
+        for (pkg in p) {
             n <- n + nvim.build.cmplls(pkg)
-        if (n > 0)
+        }
+        if (n > 0) {
             return(invisible(1))
+        }
         return(invisible(0))
     }
     # No verbosity because running as Neovim job
@@ -482,9 +615,13 @@ nvim.build.cmplls <- function(p) {
         } else {
             pvb <- sub(".*_.*_", "", pbuilt)
             # completion file is either outdated or older than the README
-            if (pvb != pvi ||
-                file.info(paste0(bdir, "README"))$mtime > file.info(paste0(bdir, pbuilt))$mtime)
+            if (
+                pvb != pvi ||
+                    file.info(paste0(bdir, "README"))$mtime >
+                        file.info(paste0(bdir, pbuilt))$mtime
+            ) {
                 need_build <- TRUE
+            }
         }
     }
 
@@ -498,9 +635,15 @@ nvim.build.cmplls <- function(p) {
         t2 <- Sys.time()
         nvim.buildargs(paste0(bdir, "args_", p), p)
         t3 <- Sys.time()
-        msg <- paste0("INFO: ", p, "=",
-                      round(as.numeric(t2 - t1), 5), " + ",
-                      round(as.numeric(t3 - t2), 5), "=Build time\x14")
+        msg <- paste0(
+            "INFO: ",
+            p,
+            "=",
+            round(as.numeric(t2 - t1), 5),
+            " + ",
+            round(as.numeric(t3 - t2), 5),
+            "=Build time\x14"
+        )
         cat(msg)
         flush(stdout())
 

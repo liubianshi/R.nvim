@@ -158,12 +158,10 @@ static void escape_str(char *s) {
     }
 }
 
-SEXP fmt_txt(SEXP txt, SEXP delim, SEXP nl) {
+SEXP fmt_txt(SEXP txt) {
     const char *s = CHAR(STRING_ELT(txt, 0));
-    const char *d = CHAR(STRING_ELT(delim, 0));
-    const char *n = CHAR(STRING_ELT(nl, 0));
     char *b = calloc(strlen(s) + 1, sizeof(char));
-    format(s, b, d[0], n[0]);
+    format(s, b, ' ', '\x14');
     SEXP ans = R_NilValue;
     PROTECT(ans = NEW_CHARACTER(1));
     SET_STRING_ELT(ans, 0, mkChar(b));
@@ -508,6 +506,9 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
     } else if (Rf_isS4(*x)) {
         p = str_cat(p, "\006<\006");
         xgroup = 4;
+    } else if (Rf_inherits(*x, "S7_object")) {
+        p = str_cat(p, "\006>\006");
+        xgroup = 7;
     } else if (Rf_isEnvironment(*x)) {
         p = str_cat(p, "\006:\006");
         xgroup = 5; // for support enviroment element but not run correct
@@ -531,7 +532,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
            here but it's too big. So, it's better to call nvimcom:::nvim.args()
            during auto completion. FORMALS() may return an object that will
            later crash R:
-           https://github.com/jalvesaq/Nvim-R/issues/543#issuecomment-748981771
+           https://github.com/jalvesaq/Vim-R/issues/543#issuecomment-748981771
          */
         p = str_cat(p, ">not_checked<");
     }
@@ -574,14 +575,12 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
             int er = 0;
             PROTECT(sn = R_tryEval(VECTOR_ELT(cmdexpr, 0), R_GlobalEnv, &er));
             if (er)
-                REprintf("nvimcom error executing command: slotNames(%s%s)\n",
-                         curenv, xname);
+                REprintf("nvimcom error executing command: %s\n", buf);
             else
                 len = length(sn);
             UNPROTECT(1);
         } else {
-            REprintf("nvimcom error: invalid value in slotNames(%s%s)\n",
-                     curenv, xname);
+            REprintf("nvimcom error: invalid value in %s\n", buf);
         }
         UNPROTECT(2);
         snprintf(buf, 127, "\xc2\xa0[%d]", len);
@@ -590,6 +589,32 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
         len = Rf_length(R_lsInternal(*x, allnames));
         snprintf(buf, 127, " [%d]", len);
         p = str_cat(p, buf);
+    } else if (xgroup == 7) {
+        SEXP cls, cmdSexp, cmdexpr;
+        ParseStatus status;
+        snprintf(buf, 575, "%s%s", curenv, xname);
+        nvimcom_backtick(buf, bbuf);
+        snprintf(buf, 575, "S7::S7_class(%s)", bbuf);
+        PROTECT(cmdSexp = allocVector(STRSXP, 1));
+        SET_STRING_ELT(cmdSexp, 0, mkChar(buf));
+        PROTECT(cmdexpr = R_ParseVector(cmdSexp, -1, &status, R_NilValue));
+        if (status == PARSE_OK) {
+            int er = 0;
+            PROTECT(cls = R_tryEval(VECTOR_ELT(cmdexpr, 0), R_GlobalEnv, &er));
+            if (er) {
+                REprintf("nvimcom error executing command: %s\n", buf);
+            } else {
+                SEXP ppt;
+                PROTECT(ppt = R_do_slot(cls, Rf_install("properties")));
+                sn = getAttrib(ppt, R_NamesSymbol);
+                UNPROTECT(1);
+                len = length(sn);
+            }
+            UNPROTECT(1);
+        } else {
+            REprintf("nvimcom error: invalid value in %s\n", buf);
+        }
+        UNPROTECT(2);
     }
 
     // finish the line
@@ -600,7 +625,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
         SEXP elmt = R_NilValue;
         const char *ename;
 
-        if (xgroup == 4) {
+        if (xgroup == 4 || xgroup == 7) {
             snprintf(newenv, 575, "%s%s@", curenv, xname);
             if (len > 0) {
                 for (int i = 0; i < len; i++) {
@@ -742,7 +767,7 @@ static void nvimcom_globalenv_list(void) {
     for (int i = 0; i < Rf_length(envVarsSEXP); i++) {
         varName = CHAR(STRING_ELT(envVarsSEXP, i));
         if (R_BindingIsActive(Rf_install(varName), R_GlobalEnv)) {
-            // See: https://github.com/jalvesaq/Nvim-R/issues/686
+            // See: https://github.com/jalvesaq/Vim-R/issues/686
             PROTECT(varSEXP = R_ActiveBindingFunction(Rf_install(varName),
                                                       R_GlobalEnv));
         } else {
@@ -1154,17 +1179,6 @@ static void nvimcom_parse_received_msg(char *buf) {
         nvimcom_fire();
 #endif
         break;
-#ifdef WIN32
-    case 'C': // Send command to Rgui Console
-        p = buf;
-        p++;
-        if (strstr(p, getenv("RNVIM_ID")) == p) {
-            p += strlen(getenv("RNVIM_ID"));
-            r_is_busy = 1;
-            Rconsolecmd(p);
-        }
-        break;
-#endif
     case 'L': // Evaluate lazy object
 #ifdef WIN32
         if (r_is_busy)

@@ -255,8 +255,8 @@ void stdin_loop(void) {
           msg++;
           switch(*msg) {
           case 'L':
-            msg++;
-            update_pkg_list(msg);
+            msg++; // change to code++
+            update_pkg_list(msg); // code
             build_objls();
             if (auto_obbr)
                 lib2ob();

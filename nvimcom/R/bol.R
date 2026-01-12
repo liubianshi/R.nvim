@@ -41,11 +41,7 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass = NULL) {
         }
     }
     if (is.null(pkg)) {
-        pkgname <- if (env_name != "") {
-            env_name
-        } else {
-            sub(".*:", "", find(funcname, mode = "function")[1])
-        }
+        pkgname <- sub(".*:", "", find(funcname, mode = "function")[1])
     } else {
         pkgname <- pkg
     }
@@ -64,7 +60,7 @@ nvim.args <- function(funcname, txt = "", pkg = NULL, objclass = NULL) {
                     return("")
                 }
                 frm <- formals(a)
-            }  else {
+            } else {
                 try(frm <- formals(get(funcname, envir = globalenv())), silent = TRUE)
                 if (length(frm) == 1 && is.na(frm)) return("")
             }

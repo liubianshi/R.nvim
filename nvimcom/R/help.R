@@ -79,6 +79,18 @@ nvim.help <- function(topic, w, firstobj, pkg) {
     }
 
     if (missing(pkg)) {
+        env_class <- environment(if (is.character(topic)) get(topic) else topic)
+        if (inherits(env_class, "box$ns")) {
+            do.call(
+                box::help,
+                list(
+                    if (is.character(topic)) as.name(topic) else topic,
+                    help_type = "text"
+                )
+            )
+            return(invisible(NULL))
+        }
+        rm(env_class)
         h <- utils::help(topic, help_type = "text")
     } else {
         h <- utils::help(topic, package = as.character(pkg), help_type = "text")

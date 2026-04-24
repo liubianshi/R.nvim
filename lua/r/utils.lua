@@ -449,4 +449,64 @@ M.dedent = function(text)
     return table.concat(lines, "\n")
 end
 
+local function packages_from_require_or_library(line)
+    if not line then return nil end
+    local s, e = vim.regex([[^\s*\(require\|library\)\s*(\s*["']\?]]):match_str(line)
+    if not s then return nil end
+    line = string.sub(line, e + 1)
+    s, e = vim.regex([[[A-Za-z.][A-Za-z0-9_.]*]]):match_str(line)
+    if not s then return nil end
+    return { line:sub(s + 1, e) }
+end
+
+local function packages_from_box_use(line)
+    if not line then return nil end
+    local s, e = vim.regex([[^\s*box::use\s*(\s*]]):match_str(line)
+    if not s then return nil end
+    s, e = vim.regex([[([^)]\+)]]):match_str(line)
+    line = line:sub(s + 2, e - 1)
+    line = line:gsub("%b[]", "")
+    line = line:gsub("%s", "")
+    line = line:gsub("[^,=]+=", "")
+    return vim.tbl_filter(
+        function(lib) return not lib:match("/") end,
+        vim.split(line, ",")
+    )
+end
+
+--- Extract package names referenced by `library()`, `require()`, or `box::use()`
+--- in a buffer. Handles multi-line calls and trailing `# comment`.
+--- @param bufnr? integer Buffer id (default: current)
+--- @return string[]
+M.extract_packages_from_buffer = function(bufnr)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    local patterns = {
+        ["start"] = vim.regex([[^\s*\(require\|library\|box::use\)\s*(]]),
+        ["end"] = vim.regex([[)\s*\(\s#.*\)\?$]]),
+    }
+    local i, pre_line, start_matched, packages = 1, "", nil, {}
+    while i <= #lines do
+        local continue = nil
+        local line = pre_line .. lines[i]
+        if start_matched or patterns["start"]:match_str(line) then
+            if patterns["end"]:match_str(line) then
+                local libs = packages_from_require_or_library(line)
+                    or packages_from_box_use(line)
+                for _, l in ipairs(libs or {}) do
+                    if not vim.tbl_contains(packages, l) then
+                        table.insert(packages, l)
+                    end
+                end
+            else
+                continue = true
+            end
+        end
+        pre_line = continue and line:gsub("%s#.*$", "") or ""
+        start_matched = continue
+        i = i + 1
+    end
+    return packages
+end
+
 return M

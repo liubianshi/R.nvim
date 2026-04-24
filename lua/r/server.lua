@@ -1,5 +1,6 @@
 local edit = require("r.edit")
 local config = require("r.config").get_config()
+local utils = require("r.utils")
 local warn = require("r.log").warn
 local uv = vim.uv
 local b_warn = {}
@@ -202,22 +203,17 @@ local build_objls_exit = function()
     require("r.lsp").send_msg({ code = "41" })
 end
 
--- List R libraries from buffer
-local list_libs_from_buffer = function()
+-- Refresh the libnames_<RNVIM_ID> file from the current buffer's
+-- library() / require() / box::use() calls. Read once by rnvimserver at
+-- startup (data_structures.c:init_lib_list); thereafter, runtime changes
+-- propagate via nvimcom's TCP "+L" messages.
+M.refresh_libnames_file = function()
+    if not vim.env.RNVIM_ID or vim.env.RNVIM_ID == "" then return end
     local start_libs = config.start_libs or "base,stats,graphics,grDevices,utils,methods"
     start_libs = string.gsub(start_libs, " ", "")
     local flibs = vim.split(start_libs, ",")
-
-    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, true)
-    for _, v in pairs(lines) do
-        if v:find("^%s*library%s*%(") or v:find("^%s*require%s*%(") then
-            local lib = string.gsub(v, "%s*", "")
-            lib = string.gsub(lib, "%s*,.*", "")
-            lib = string.gsub(lib, "%s*library%s*%(%s*", "")
-            lib = string.gsub(lib, "%s*require%s*%(%s*", "")
-            lib = string.gsub(lib, '"', "")
-            lib = string.gsub(lib, "'", "")
-            lib = string.gsub(lib, "%s*%).*", "")
+    for _, lib in ipairs(utils.extract_packages_from_buffer(0)) do
+        if not vim.tbl_contains(flibs, lib) then
             table.insert(flibs, lib)
         end
     end
@@ -371,7 +367,7 @@ M.check_nvimcom_version = function()
     local mktm = (t2 - t1) / 1000000000
     require("r.edit").add_to_debug_info("make rnvimserver", mktm, "Time")
 
-    list_libs_from_buffer()
+    M.refresh_libnames_file()
 
     vim.list_extend(
         flines,

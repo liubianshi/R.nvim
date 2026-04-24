@@ -4,6 +4,7 @@ local M = {}
 ---@param opts? RConfigUserOpts
 M.setup = function(opts)
     if opts then require("r.config").store_user_opts(opts) end
+    require("r.autocmds").setup()
 end
 
 return M

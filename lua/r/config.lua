@@ -168,6 +168,11 @@ local hooks = require("r.hooks")
 ---for more information.
 ---@field compl_data? { max_depth: integer, max_size: integer, max_time: integer }
 ---
+---Completion method for nvimcom. Either `"normal"` (R-side polls loaded
+---libraries every top-level task) or `"buffer"` (skip polling; rely on
+---Neovim-side detection). Defaults to `"buffer"` inside nvimcom.
+---@field compl_method? "normal"|"buffer"
+---
 ---Options for the r_ls (R.nvim's built-in language server)
 ---@field r_ls? RLSConfigOpts
 ---
@@ -495,6 +500,7 @@ local config = {
     close_term = true,
     convert_range_int = false,
     compldir = "",
+    compl_method = "buffer",
     compl_data = {
         max_depth = 3,
         max_size = 1000000,
@@ -712,6 +718,7 @@ local apply_user_opts = function(opts)
     -- If an option is an enum, you can define the possible values here:
     local valid_values = {
         auto_start       = { "no", "on startup", "always" },
+        compl_method     = { "normal", "buffer" },
         editing_mode     = { "vi", "emacs" },
         nvimpager        = { "no", "tab", "split_h", "split_v", "float" },
         open_html        = { "no", "open", "open and focus" },

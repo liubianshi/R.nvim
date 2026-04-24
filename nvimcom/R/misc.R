@@ -346,6 +346,14 @@ nvim.getclass <- function(x) {
     return(cls)
 }
 
+update_compl_method <- function(method) {
+    if (method == "normal") {
+        .C(set_compl_method, 0L)
+    } else if (method == "buffer") {
+        .C(set_compl_method, 1L)
+    }
+}
+
 update_params <- function(fname) {
     if (
         getOption("nvimcom.set_params") == "no" ||

@@ -129,6 +129,12 @@ start_R2 = function()
         start_options,
         'options(nvimcom.source.path = "' .. config.source_file .. '")'
     )
+    if config.compl_method then
+        table.insert(
+            start_options,
+            'nvimcom:::update_compl_method("' .. config.compl_method .. '")'
+        )
+    end
 
     if vim.o.encoding == "utf-8" then
         vim.fn.writefile(start_options, config.tmpdir .. "/start_options_utf8.R")

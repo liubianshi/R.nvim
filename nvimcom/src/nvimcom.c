@@ -484,6 +484,9 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
         xgroup = 7;
     } else if (Rf_isEnvironment(*x)) {
         p = str_cat(p, "\006e\006");
+        if (!R_IsNamespaceEnv(*x) && !R_IsPackageEnv(*x) &&
+            *x != R_GlobalEnv && *x != R_BaseEnv && *x != R_EmptyEnv)
+            xgroup = 5;
     } else if (TYPEOF(*x) == PROMSXP) {
         p = str_cat(p, "\006p\006");
     } else {
@@ -623,6 +626,22 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
                     }
                 }
             }
+        } else if (xgroup == 5) {
+            SEXP envNames;
+            snprintf(newenv, 575, "%s%s$", curenv, xname);
+            PROTECT(envNames = R_lsInternal3(*x, TRUE, FALSE));
+            int elen = length(envNames);
+            for (int i = 0; i < elen; i++) {
+                ename = CHAR(STRING_ELT(envNames, i));
+                elmt = Rf_findVarInFrame(*x, Rf_install(ename));
+                if (elmt != R_UnboundValue) {
+                    PROTECT(elmt);
+                    p = nvimcom_glbnv_line(&elmt, ename, newenv, p,
+                                           depth + 1);
+                    UNPROTECT(1);
+                }
+            }
+            UNPROTECT(1);
         } else {
             SEXP listNames;
             snprintf(newenv, 575, "%s%s$", curenv, xname);

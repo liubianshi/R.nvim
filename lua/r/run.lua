@@ -198,7 +198,7 @@ end
 M.start_R = function(whatr)
     -- R started and nvimcom loaded
     if vim.g.R_Nvim_status == 7 then
-        if config.external_term == "" then require("r.term.builtin").reopen_win() end
+        if config.external_term == "" then require("r.term.builtin").toggle_win() end
         return
     end
 

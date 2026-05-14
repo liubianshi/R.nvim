@@ -1,3 +1,4 @@
+#define ENABLE_LEGACY_NONAPI_FUNS
 #include <R.h> /* to include Rconfig.h */
 #include <Rversion.h>
 #include <Rdefines.h>
@@ -287,7 +288,7 @@ static void send_to_nvim(char *msg) {
     // based on code found on php source
     // Send the message
     char *pCur = msg;
-    char *pEnd = msg + len;
+    const char *pEnd = msg + len;
     while (pCur < pEnd) {
         sent = send(sfd, pCur, pEnd - pCur, 0);
         if (sent >= 0) {
@@ -458,7 +459,7 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
     } else if (Rf_isFactor(*x)) {
         p = str_cat(p, "\006f\006");
 #if defined(R_VERSION) && R_VERSION >= R_Version(4, 6, 0)
-    } else if (Rf_isScalarString(*x)) {
+    } else if (Rf_isString(*x)) {
 #else
     } else if (Rf_isValidString(*x)) {
 #endif
@@ -979,12 +980,17 @@ void nvimcom_task(void) {
 
             /* From R-exts: Evaluating R expressions from C */
             SEXP s, t;
+#if defined(R_VERSION) && R_VERSION >= R_Version(4, 4, 0)
             PROTECT(t = s = Rf_allocLang(2));
-            SETCAR(t, install("options"));
+#else
+            PROTECT(t = s = Rf_allocList(2));
+            SET_TYPEOF(s, LANGSXP);
+#endif
+            SETCAR(t, Rf_install("options"));
             t = CDR(t);
-            SETCAR(t, ScalarInteger((int)columns));
-            SET_TAG(t, install("width"));
-            eval(s, R_GlobalEnv);
+            SETCAR(t, Rf_ScalarInteger(columns));
+            SET_TAG(t, Rf_install("width"));
+            Rf_eval(s, R_GlobalEnv);
             UNPROTECT(1);
 
             if (verbose > 2)

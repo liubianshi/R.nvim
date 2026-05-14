@@ -12,6 +12,7 @@ local rhelp_list = {}
 local lob = {}
 local new_libs_in_rns = ""
 local building_objls = false
+local clear_status_line = false
 
 local M = {}
 
@@ -71,6 +72,7 @@ local init_stdout = function(_, data, _)
             elseif c:find("^ECHO: ") then
                 local msg = c:sub(7)
                 vim.schedule(function() vim.api.nvim_echo({ { msg } }, false, {}) end)
+                clear_status_line = true
             elseif c:find("^INFO: ") then
                 local info = vim.fn.split(c:sub(7), "=")
                 if #info == 3 then
@@ -194,7 +196,9 @@ local init_exit = function(_, data, _)
 end
 
 local build_objls_exit = function()
-    vim.schedule(function() vim.api.nvim_echo({ { " " } }, false, {}) end)
+    if clear_status_line then
+        vim.schedule(function() vim.api.nvim_echo({ { " " } }, false, {}) end)
+    end
     edit.add_to_debug_info(
         "stderr of last completion data building",
         table.concat(o_err, "\n")

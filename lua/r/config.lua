@@ -336,8 +336,8 @@ local hooks = require("r.hooks")
 ---Do `:help quarto_render_args` for more information.
 ---@field quarto_render_args? string
 ---
----How to highlight code blocks in Quarto and Rmd documents.
----@field quarto_chunk_hl? { highlight: boolean, yaml_hl: boolean, virtual_title: boolean, bg: string, events: string }
+---How to highlight code blocks in Quarto, Rmd, and Rnoweb documents.
+---@field chunk_hl? { highlight: boolean, yaml_hl: boolean, virtual_title: boolean, bg: string, events: string }
 ---
 ---Enable ROxygen support.
 ---Controls both highlighting of ROxygen comments and ROxygen-specific
@@ -571,7 +571,7 @@ local config = {
     pdfviewer = "",
     quarto_preview_args = "",
     quarto_render_args = "",
-    quarto_chunk_hl = {
+    chunk_hl = {
         highlight = true,
         yaml_hl = true,
         virtual_title = true,
@@ -621,7 +621,6 @@ local config = {
             stop_types = { "program", "braced_expression" },
             dedent = false,
             wrap_inline = function(code) return code end,
-            wrap_file = function(filepath) return 'Rnvim.source("' .. filepath .. '")' end,
         },
         python = {
             aliases = { "pyodide" },
@@ -643,6 +642,19 @@ local config = {
             end,
             wrap_file = function(filepath)
                 return 'system2("bash", c(shQuote("' .. filepath .. '")))'
+            end,
+        },
+        sql = {
+            aliases = {},
+            stop_types = { "program" },
+            dedent = true,
+            -- suppressWarnings silences the "dbGetQuery should only be used with
+            -- SELECT" warning on DDL statements (not elegant, but pragmatic).
+            wrap_inline = function(code)
+                return 'suppressWarnings(DBI::dbGetQuery(getOption("nvimcom.sql.conn"), r"---(' .. code .. ')---"))'
+            end,
+            wrap_file = function(filepath)
+                return 'suppressWarnings(DBI::dbGetQuery(getOption("nvimcom.sql.conn"), paste(readLines("' .. filepath .. '"), collapse = "\\n")))'
             end,
         },
     },
@@ -757,6 +769,7 @@ local apply_user_opts = function(opts)
             if
                 not key_name:find("r_ls%.fun_data")
                 and not key_name:find("^chunk_langs%.")
+                and key_name ~= "quarto_chunk_hl"
             then
                 swarn("Invalid option `" .. key_name .. "`.")
             end
@@ -1143,6 +1156,17 @@ local global_setup = function()
         vim.g.R_Nvim_status = 1
     end
 
+    -- Migration: quarto_chunk_hl renamed to chunk_hl
+    if
+        user_opts.quarto_chunk_hl
+        and type(user_opts.quarto_chunk_hl) == "table"
+        and user_opts.chunk_hl == nil
+    then
+        user_opts.chunk_hl = user_opts.quarto_chunk_hl
+        user_opts.quarto_chunk_hl = nil
+        swarn("Option `quarto_chunk_hl` is deprecated. Please use `chunk_hl` instead.")
+    end
+
     apply_user_opts(user_opts)
 
     -- Config values that depend on either system features or other config
@@ -1193,6 +1217,9 @@ local global_setup = function()
         }
         config.R_app = "ssh"
     end
+
+    if config.chunk_hl.highlight == nil then config.chunk_hl.highlight = true end
+    if config.chunk_hl.yaml_hl == nil then config.chunk_hl.yaml_hl = true end
 
     vim.fn.timer_start(1, require("r.config").check_health)
 
@@ -1316,27 +1343,20 @@ M.check_health = function()
         end
         return false
     end
-    local has_treesitter, _ = pcall(require, "nvim-treesitter")
-    if not has_treesitter then
+
+    local parsers = vim.api.nvim_get_runtime_file(
+        "parser" .. (config.is_windows and "\\" or "/") .. "*.*",
+        true
+    )
+    if
+        not has_parser("r", parsers)
+        or not has_parser("markdown", parsers)
+        or not has_parser("rnoweb", parsers)
+        or not has_parser("yaml", parsers)
+    then
         swarn(
-            'R.nvim requires nvim-treesitter. Please install it and the parsers for "r", "markdown", "rnoweb", and "yaml".'
+            'R.nvim requires treesitter parsers for "r", "markdown", "rnoweb", and "yaml". Please, install them.'
         )
-    else
-        -- Check if required treesitter parsers are available
-        local parsers = vim.api.nvim_get_runtime_file(
-            "parser" .. (config.is_windows and "\\" or "/") .. "*.*",
-            true
-        )
-        if
-            not has_parser("r", parsers)
-            or not has_parser("markdown", parsers)
-            or not has_parser("rnoweb", parsers)
-            or not has_parser("yaml", parsers)
-        then
-            swarn(
-                'R.nvim requires treesitter parsers for "r", "markdown", "rnoweb", and "yaml". Please, install them.'
-            )
-        end
     end
 
     if #smsgs > 0 then

@@ -167,6 +167,7 @@ nvim_viewobj <- function(
 }
 
 #' Call base::source.
+#' This function is sent to R Console by `R.nvim`.
 #' @param ... Further arguments passed to base::source.
 #' @param print.eval See base::source.
 #' @param spaced See base::source.
@@ -177,46 +178,6 @@ Rnvim.source <- function(..., print.eval = TRUE, spaced = FALSE) {
         print.eval = print.eval,
         spaced = spaced
     )
-}
-
-#' Call base::source.
-#' This function is sent to R Console when the user press `\ss`.
-#' @param ... Further arguments passed to base::source.
-#' @param local See base::source.
-Rnvim.selection <- function(..., local = parent.frame()) {
-    Rnvim.source(..., local = local)
-}
-
-#' Call base::source.
-#' This function is sent to R Console when the user press `\pp`.
-#' @param ... Further arguments passed to base::source.
-#' @param local See base::source.
-Rnvim.paragraph <- function(..., local = parent.frame()) {
-    Rnvim.source(..., local = local)
-}
-
-#' Call base::source.
-#' This function is sent to R Console when the user press `\bb`.
-#' @param ... Further arguments passed to base::source.
-#' @param local See base::source.
-Rnvim.block <- function(..., local = parent.frame()) {
-    Rnvim.source(..., local = local)
-}
-
-#' Call base::source.
-#' This function is sent to R Console when the user press `\ff`.
-#' @param ... Further arguments passed to base::source.
-#' @param local See base::source.
-Rnvim.function <- function(..., local = parent.frame()) {
-    Rnvim.source(..., local = local)
-}
-
-#' Call base::source.
-#' This function is sent to R Console when the user press `\cc`.
-#' @param ... Further arguments passed to base::source.
-#' @param local See base::source.
-Rnvim.chunk <- function(..., local = parent.frame()) {
-    Rnvim.source(..., local = local)
 }
 
 #' Source a temporary copy of an R file and, finally, delete it.

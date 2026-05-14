@@ -633,7 +633,11 @@ static char *nvimcom_glbnv_line(SEXP *x, const char *xname, const char *curenv,
             int elen = length(envNames);
             for (int i = 0; i < elen; i++) {
                 ename = CHAR(STRING_ELT(envNames, i));
+#if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
+                elmt = R_getVarEx(Rf_install(ename), *x, FALSE, R_UnboundValue);
+#else
                 elmt = Rf_findVarInFrame(*x, Rf_install(ename));
+#endif
                 if (elmt != R_UnboundValue) {
                     PROTECT(elmt);
                     p = nvimcom_glbnv_line(&elmt, ename, newenv, p,
@@ -757,7 +761,12 @@ static void nvimcom_globalenv_list(void) {
             PROTECT(varSEXP = R_ActiveBindingFunction(Rf_install(varName),
                                                       R_GlobalEnv));
         } else {
+#if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
+            PROTECT(varSEXP = R_getVarEx(Rf_install(varName), R_GlobalEnv, TRUE,
+                                         R_UnboundValue));
+#else
             PROTECT(varSEXP = Rf_findVar(Rf_install(varName), R_GlobalEnv));
+#endif
         }
         if (varSEXP != R_UnboundValue) {
             // should never be unbound
@@ -970,8 +979,7 @@ void nvimcom_task(void) {
 
             /* From R-exts: Evaluating R expressions from C */
             SEXP s, t;
-            PROTECT(t = s = allocList(2));
-            SET_TYPEOF(s, LANGSXP);
+            PROTECT(t = s = Rf_allocLang(2));
             SETCAR(t, install("options"));
             t = CDR(t);
             SETCAR(t, ScalarInteger((int)columns));
